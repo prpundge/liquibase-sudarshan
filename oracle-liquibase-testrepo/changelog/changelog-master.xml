@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!-- Global DDL -->
+    <include file="../database/global/ddl/account_type.sql" relativeToChangelogFile="true"/>
+    <include file="../database/global/ddl/customer_type.sql" relativeToChangelogFile="true"/>
+    <include file="../database/global/ddl/account.sql" relativeToChangelogFile="true"/>
+
+    <!-- Global static datasets -->
+    <include file="../database/global/staticdatasetup/account_type.sql" relativeToChangelogFile="true"/>
+    <include file="../database/global/staticdatasetup/customer_type.sql" relativeToChangelogFile="true"/>
+
+    <!-- Country-specific static datasets (selected via Liquibase contexts: IN, SG, US) -->
+    <include file="../database/countries/IN/staticdatasetup/account_type.sql" relativeToChangelogFile="true"/>
+    <include file="../database/countries/SG/staticdatasetup/account_type.sql" relativeToChangelogFile="true"/>
+    <include file="../database/countries/US/staticdatasetup/customer_type.sql" relativeToChangelogFile="true"/>
+
+</databaseChangeLog>

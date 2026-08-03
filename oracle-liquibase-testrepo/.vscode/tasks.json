@@ -1,0 +1,74 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Liquibase Sudarshan: validate repository",
+            "detail": "Static validation of this Oracle Liquibase repository (no database needed)",
+            "type": "shell",
+            "command": "${workspaceFolder}/../liquibase-sudarshan/gradlew",
+            "args": [
+                "-p",
+                "${workspaceFolder}/../liquibase-sudarshan",
+                "validateRepo",
+                "-Prepo=${workspaceFolder}",
+                "-PrepoArgs=--oracle",
+                "--console=plain",
+                "--quiet"
+            ],
+            "windows": {
+                "command": "${workspaceFolder}\\..\\liquibase-sudarshan\\gradlew.bat"
+            },
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": {
+                "owner": "liquibase-sudarshan",
+                "fileLocation": "absolute",
+                "pattern": {
+                    "regexp": "^(.+):(\\d+):(\\d+):\\s+(error|warning|info):\\s+(.+)$",
+                    "file": 1,
+                    "line": 2,
+                    "column": 3,
+                    "severity": 4,
+                    "message": 5
+                }
+            }
+        },
+        {
+            "label": "Liquibase Sudarshan: validate SG only",
+            "detail": "Validate the global datasets plus the SG country datasets",
+            "type": "shell",
+            "command": "${workspaceFolder}/../liquibase-sudarshan/gradlew",
+            "args": [
+                "-p",
+                "${workspaceFolder}/../liquibase-sudarshan",
+                "validateRepo",
+                "-Prepo=${workspaceFolder}",
+                "-PrepoArgs=--oracle --country=SG",
+                "--console=plain",
+                "--quiet"
+            ],
+            "windows": {
+                "command": "${workspaceFolder}\\..\\liquibase-sudarshan\\gradlew.bat"
+            },
+            "problemMatcher": {
+                "owner": "liquibase-sudarshan",
+                "fileLocation": "absolute",
+                "pattern": {
+                    "regexp": "^(.+):(\\d+):(\\d+):\\s+(error|warning|info):\\s+(.+)$",
+                    "file": 1,
+                    "line": 2,
+                    "column": 3,
+                    "severity": 4,
+                    "message": 5
+                }
+            }
+        }
+    ]
+}

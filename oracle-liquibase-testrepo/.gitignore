@@ -1,0 +1,3 @@
+liquibase.checks-settings.conf
+*.log
+.DS_Store

@@ -1,0 +1,16 @@
+# IDE / session state
+.idea/
+.claude/
+liquibase-guard/
+*.iml
+out/
+
+# Build outputs
+build/
+bin/
+.gradle/
+.intellijPlatform/
+
+# Secrets / local
+*.local.json
+certificate/

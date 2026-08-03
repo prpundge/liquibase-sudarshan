@@ -1,0 +1,78 @@
+<idea-plugin>
+    <id>com.sudarshan.liquibase-validator</id>
+    <name>Liquibase Sudarshan - SQL &amp; Data Validator</name>
+    <vendor email="pravins.exe@gmail.com">Sudarshan</vendor>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <description><![CDATA[
+        <p><b>Catch Liquibase, PostgreSQL and Oracle data errors before they reach the database.</b></p>
+        <p>Liquibase Sudarshan validates Liquibase formatted SQL scripts against your repository's
+        DDL schema directly inside the editor — no SQL execution required:</p>
+        <ul>
+            <li>Staging/temp-table datatype and length mismatches against the real target table</li>
+            <li>INSERT value validation: VARCHAR length, SMALLINT/INTEGER/BIGINT ranges,
+                DECIMAL precision/scale, BOOLEAN, DATE, TIMESTAMP, UUID</li>
+            <li>NULL values in NOT NULL columns, missing mandatory columns</li>
+            <li>MERGE source/target table, column mapping and datatype validation</li>
+            <li>Duplicate primary-key/unique values in static datasets</li>
+            <li>Unused staging columns, changeset structure and rollback checks</li>
+            <li>Country-specific static dataset validation against the global schema</li>
+            <li>Quick fixes, repository-wide validation report with navigation</li>
+            <li>Optional <i>read-only</i> database-backed schema and foreign-key verification</li>
+        </ul>
+        <p>Configure the repository layout under <b>Settings | Tools | Liquibase Sudarshan</b>.</p>
+    ]]></description>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <localInspection
+            shortName="LiquibaseSudarshanValidation"
+            displayName="Liquibase SQL validation"
+            groupName="Liquibase"
+            enabledByDefault="true"
+            level="ERROR"
+            runForWholeFile="true"
+            implementationClass="com.company.liquibasevalidator.inspection.LiquibaseSqlInspection"/>
+
+        <projectConfigurable
+            parentId="tools"
+            instance="com.company.liquibasevalidator.settings.LiquibaseSettingsConfigurable"
+            id="com.sudarshan.liquibase.settings"
+            displayName="Liquibase Sudarshan"/>
+
+        <toolWindow
+            id="Liquibase Validation"
+            anchor="right"
+            canCloseContents="false"
+            factoryClass="com.company.liquibasevalidator.plugin.LiquibaseReportToolWindowFactory"
+            icon="/icons/sudarshan.svg"/>
+
+        <notificationGroup id="Liquibase Sudarshan" displayType="BALLOON"/>
+    </extensions>
+
+    <!-- Pre-commit validation: only active when the IDE has VCS support. -->
+    <depends optional="true" config-file="liquibase-sudarshan-vcs.xml">com.intellij.modules.vcs</depends>
+    <!-- Pre-push validation + database dry run: only active when the Git plugin is present. -->
+    <depends optional="true" config-file="liquibase-sudarshan-git.xml">Git4Idea</depends>
+
+    <actions>
+        <group id="LiquibaseSudarshan.Actions" text="Liquibase Sudarshan" popup="false">
+            <action
+                id="LiquibaseSudarshan.ValidateFile"
+                class="com.company.liquibasevalidator.plugin.ValidateLiquibaseFileAction"
+                text="Validate Liquibase SQL"
+                description="Validate the selected Liquibase SQL file or directory against the repository schema"/>
+            <action
+                id="LiquibaseSudarshan.ValidateRepository"
+                class="com.company.liquibasevalidator.plugin.ValidateLiquibaseRepositoryAction"
+                text="Validate Liquibase Repository"
+                description="Validate all configured Liquibase repository directories and show a report"/>
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+        </group>
+        <group id="LiquibaseSudarshan.ToolsMenu" text="Liquibase Sudarshan" popup="true">
+            <reference ref="LiquibaseSudarshan.ValidateRepository"/>
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </group>
+    </actions>
+</idea-plugin>

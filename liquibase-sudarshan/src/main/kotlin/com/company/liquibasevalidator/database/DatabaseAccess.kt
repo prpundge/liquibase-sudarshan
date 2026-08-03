@@ -1,0 +1,50 @@
+package com.company.liquibasevalidator.database
+
+import com.company.liquibasevalidator.schema.TableSchema
+
+data class DatabaseConfig(
+    val jdbcUrl: String,
+    val user: String,
+    val password: String,
+    /** PostgreSQL schema (default `public`) or Oracle owner (default = user). */
+    val schemaName: String = "",
+    val queryTimeoutSeconds: Int = 10,
+)
+
+/**
+ * One read-only database session. Implementations must never execute anything but SELECTs
+ * and metadata queries — the plugin's hard safety rule is that validation cannot write.
+ */
+interface DatabaseSession : AutoCloseable {
+    /** Live schema of the configured database schema/owner, keyed by lowercase table name. */
+    fun fetchTables(): Map<String, TableSchema>
+
+    /** Executed changesets from DATABASECHANGELOG as lowercase `author:id`, or null when the
+     *  table does not exist (fresh database, Liquibase has never run). */
+    fun executedChangesets(): Set<String>?
+
+    /** Executes a single SELECT and returns the first column of the first row (null if no
+     *  rows). Throws [IllegalArgumentException] for anything that is not a lone SELECT. */
+    fun scalarSelect(sql: String): String?
+
+    /** True/false when a row where [column] = [value] (compared as trimmed text) provably
+     *  exists / does not exist; null when the identifiers cannot be probed safely. */
+    fun rowExists(table: String, column: String, value: String): Boolean?
+}
+
+/** Shared guard: the only statement shape the plugin is ever allowed to evaluate. */
+object SqlGuards {
+    /** Returns the normalized statement or throws [IllegalArgumentException]. */
+    fun requireSingleSelect(sql: String): String {
+        val normalized = sql.trim().trimEnd(';').trim()
+        require(normalized.lowercase().startsWith("select") && !normalized.contains(';')) {
+            "Only a single SELECT statement can be evaluated in a dry run"
+        }
+        return normalized
+    }
+}
+
+/** Opens read-only sessions; the only entry point to a live database. */
+interface DatabaseConnector {
+    fun <T> withSession(block: (DatabaseSession) -> T): T
+}
