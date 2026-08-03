@@ -2,6 +2,7 @@ package com.company.liquibasevalidator.settings
 
 import com.company.liquibasevalidator.database.DatabaseConfig
 import com.company.liquibasevalidator.database.JdbcConnector
+import com.company.liquibasevalidator.database.JdbcDrivers
 import com.company.liquibasevalidator.schema.SchemaIndexService
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer
 import com.intellij.openapi.application.ApplicationManager
@@ -35,6 +36,8 @@ class LiquibaseSettingsConfigurable(private val project: Project) : Configurable
     private val dbUser = JBTextField()
     private val dbPassword = JBPasswordField()
     private val dbSchema = JBTextField("public", 12)
+    private val dbDriverJar = TextFieldWithBrowseButton()
+    private val driverStatus = com.intellij.ui.components.JBLabel()
 
     private val varcharLength = JBCheckBox("Validate VARCHAR/CHAR length", true)
     private val numericRanges = JBCheckBox("Validate numeric ranges and DECIMAL precision/scale", true)
@@ -78,6 +81,15 @@ class LiquibaseSettingsConfigurable(private val project: Project) : Configurable
         val testConnection = JButton("Test connection").apply {
             addActionListener { testDatabaseConnection() }
         }
+        dbDriverJar.addActionListener {
+            FileChooser.chooseFile(
+                FileChooserDescriptorFactory.createSingleFileDescriptor("jar"), project, null,
+            ) { chosen -> dbDriverJar.text = chosen.path }
+        }
+        val downloadDriver = JButton("Download driver").apply {
+            toolTipText = "Download the JDBC driver for the URL above from Maven Central (SHA-256 verified)"
+            addActionListener { downloadDriverForUrl() }
+        }
 
         val form = FormBuilder.createFormBuilder()
             .addComponent(sectionLabel("Repository layout"))
@@ -92,7 +104,14 @@ class LiquibaseSettingsConfigurable(private val project: Project) : Configurable
             .addLabeledComponent("User:", dbUser, true)
             .addLabeledComponent("Password:", dbPassword, true)
             .addLabeledComponent("Schema:", dbSchema)
-            .addComponent(testConnection)
+            .addLabeledComponent("Driver JAR (optional):", dbDriverJar, true)
+            .addComponent(driverStatus)
+            .addComponent(
+                JPanel(java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 6, 0)).apply {
+                    add(testConnection)
+                    add(downloadDriver)
+                },
+            )
             .addComponent(sectionLabel("Validations"))
             .addComponent(varcharLength)
             .addComponent(numericRanges)
@@ -119,12 +138,54 @@ class LiquibaseSettingsConfigurable(private val project: Project) : Configurable
             border = JBUI.Borders.empty(10, 0, 4, 0)
         }
 
+    /** Refreshes the driver status line for the current URL. */
+    private fun updateDriverStatus() {
+        val spec = JdbcDrivers.specFor(dbUrl.text.trim())
+        driverStatus.text = when {
+            spec == null -> "Driver: enter a PostgreSQL or Oracle JDBC URL"
+            dbDriverJar.text.isNotBlank() -> "Driver: custom JAR (${dbDriverJar.text})"
+            JdbcDrivers.installedJar(spec) != null -> "Driver: ${spec.displayName} — downloaded ✓"
+            else -> "Driver: ${spec.displayName} (${spec.sizeMb} MB) not downloaded yet — " +
+                "use Download driver (drivers are not bundled to keep the plugin small)"
+        }
+    }
+
+    private fun downloadDriverForUrl() {
+        val spec = JdbcDrivers.specFor(dbUrl.text.trim())
+        if (spec == null) {
+            Messages.showWarningDialog(project, "Enter a PostgreSQL or Oracle JDBC URL first.", "Liquibase Sudarshan")
+            return
+        }
+        object : Task.Modal(project, "Downloading ${spec.displayName}", true) {
+            var error: String? = null
+            override fun run(indicator: ProgressIndicator) {
+                try {
+                    JdbcDrivers.download(spec) { read, total ->
+                        indicator.checkCanceled()
+                        indicator.fraction = read.toDouble() / total
+                        indicator.text2 = "%,d / %,d bytes".format(read, total)
+                    }
+                } catch (e: Exception) {
+                    error = e.message ?: e.javaClass.simpleName
+                }
+            }
+
+            override fun onFinished() {
+                ApplicationManager.getApplication().invokeLater {
+                    error?.let { Messages.showErrorDialog(project, "Download failed: $it", "Liquibase Sudarshan") }
+                    updateDriverStatus()
+                }
+            }
+        }.queue()
+    }
+
     private fun testDatabaseConnection() {
         val config = DatabaseConfig(
             jdbcUrl = dbUrl.text.trim(),
             user = dbUser.text.trim(),
             password = String(dbPassword.password),
             schemaName = dbSchema.text.trim(),
+            driverJarPath = dbDriverJar.text.trim(),
         )
         object : Task.Modal(project, "Testing database connection", true) {
             var error: String? = null
@@ -158,6 +219,7 @@ class LiquibaseSettingsConfigurable(private val project: Project) : Configurable
             dbUrl.text != s.dbUrl ||
             dbUser.text != s.dbUser ||
             dbSchema.text != s.dbSchema ||
+            dbDriverJar.text != s.dbDriverJarPath ||
             String(dbPassword.password) != DbPasswordStore.load(s.dbUrl, s.dbUser) ||
             varcharLength.isSelected != s.validateVarcharLength ||
             numericRanges.isSelected != s.validateNumericRanges ||
@@ -184,6 +246,7 @@ class LiquibaseSettingsConfigurable(private val project: Project) : Configurable
             s.dbUrl = dbUrl.text.trim()
             s.dbUser = dbUser.text.trim()
             s.dbSchema = dbSchema.text.trim()
+            s.dbDriverJarPath = dbDriverJar.text.trim()
             s.validateVarcharLength = varcharLength.isSelected
             s.validateNumericRanges = numericRanges.isSelected
             s.validateNullConstraints = nullConstraints.isSelected
@@ -214,7 +277,9 @@ class LiquibaseSettingsConfigurable(private val project: Project) : Configurable
         dbUrl.text = s.dbUrl
         dbUser.text = s.dbUser
         dbSchema.text = s.dbSchema
+        dbDriverJar.text = s.dbDriverJarPath
         dbPassword.text = DbPasswordStore.load(s.dbUrl, s.dbUser)
+        updateDriverStatus()
         varcharLength.isSelected = s.validateVarcharLength
         numericRanges.isSelected = s.validateNumericRanges
         nullConstraints.isSelected = s.validateNullConstraints

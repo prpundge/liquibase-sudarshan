@@ -30,6 +30,8 @@ class LiquibaseSettings : PersistentStateComponent<LiquibaseSettings.State> {
         var dbUrl: String = ""
         var dbUser: String = ""
         var dbSchema: String = "public"
+        /** Optional custom JDBC driver JAR (air-gapped setups); empty = on-demand download. */
+        var dbDriverJarPath: String = ""
 
         var validateVarcharLength: Boolean = true
         var validateNumericRanges: Boolean = true

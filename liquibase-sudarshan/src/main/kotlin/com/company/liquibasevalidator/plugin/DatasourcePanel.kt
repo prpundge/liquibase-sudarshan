@@ -1,5 +1,7 @@
 package com.company.liquibasevalidator.plugin
 
+import com.company.liquibasevalidator.database.DriverMissingException
+import com.company.liquibasevalidator.database.JdbcDrivers
 import com.company.liquibasevalidator.schema.SchemaIndexService
 import com.company.liquibasevalidator.schema.TableSchema
 import com.company.liquibasevalidator.settings.LiquibaseSettings
@@ -141,14 +143,63 @@ internal class DatasourcePanel(private val project: Project) : JPanel(BorderLayo
                             render()
                         },
                         onFailure = { e ->
-                            lastError = e.message ?: e.javaClass.simpleName
-                            render()
+                            val missing = e as? DriverMissingException
+                            if (missing != null) {
+                                offerDriverDownload(missing.spec)
+                            } else {
+                                lastError = e.message ?: e.javaClass.simpleName
+                                render()
+                            }
                         },
                     )
                 },
                 project.disposed,
             )
         }
+    }
+
+    /** Drivers are not bundled (keeps the plugin ~20x smaller): ask once, download, retry. */
+    private fun offerDriverDownload(spec: JdbcDrivers.DriverSpec) {
+        lastError = "${spec.displayName} not downloaded yet"
+        render()
+        val answer = com.intellij.openapi.ui.Messages.showYesNoDialog(
+            project,
+            "${spec.displayName} (${spec.sizeMb} MB) is required to connect but is not installed.\n\n" +
+                "Download it from Maven Central now? The file is verified against a pinned " +
+                "SHA-256 checksum and stored in ~/.liquibase-sudarshan/drivers.",
+            "Liquibase Sudarshan",
+            "Download (${spec.sizeMb} MB)",
+            "Cancel",
+            com.intellij.openapi.ui.Messages.getQuestionIcon(),
+        )
+        if (answer != com.intellij.openapi.ui.Messages.YES) return
+        object : com.intellij.openapi.progress.Task.Backgroundable(project, "Downloading ${spec.displayName}", true) {
+            var error: String? = null
+            override fun run(indicator: com.intellij.openapi.progress.ProgressIndicator) {
+                try {
+                    JdbcDrivers.download(spec) { read, total ->
+                        indicator.checkCanceled()
+                        indicator.fraction = read.toDouble() / total
+                    }
+                } catch (e: Exception) {
+                    error = e.message ?: e.javaClass.simpleName
+                }
+            }
+
+            override fun onFinished() {
+                ApplicationManager.getApplication().invokeLater(
+                    {
+                        if (error != null) {
+                            lastError = "Driver download failed: $error"
+                            render()
+                        } else {
+                            connect() // retry with the freshly installed driver
+                        }
+                    },
+                    project.disposed,
+                )
+            }
+        }.queue()
     }
 
     fun render() {

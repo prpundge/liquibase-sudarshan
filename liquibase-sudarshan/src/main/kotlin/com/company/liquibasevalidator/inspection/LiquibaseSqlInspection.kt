@@ -34,9 +34,18 @@ class LiquibaseSqlInspection : LocalInspectionTool() {
 
         return try {
             val project = file.project
-            val options = LiquibaseSettings.getInstance(project).toOptions()
-            val schema = SchemaIndexService.getInstance(project).schemaProvider()
-            val result = ValidationEngine(options).validate(text, schema)
+            val index = SchemaIndexService.getInstance(project)
+
+            // Memoized per file: unchanged file + unchanged schema/settings/db state means
+            // the previous result is still valid — skip the whole lex/parse/validate.
+            val cache = ValidationResultCache.getInstance(project)
+            val fileUrl = file.virtualFile?.url ?: file.name
+            val fileStamp = file.modificationStamp
+            val stateStamp = index.validationStamp()
+            val result = cache.get(fileUrl, fileStamp, stateStamp)
+                ?: ValidationEngine(LiquibaseSettings.getInstance(project).toOptions())
+                    .validate(text, index.schemaProvider())
+                    .also { cache.put(fileUrl, fileStamp, stateStamp, it) }
 
             result.problems.mapNotNull { problem ->
                 val range = clamp(problem.range.start, problem.range.end, text.length) ?: return@mapNotNull null

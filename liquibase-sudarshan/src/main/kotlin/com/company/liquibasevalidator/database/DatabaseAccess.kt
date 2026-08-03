@@ -8,6 +8,8 @@ data class DatabaseConfig(
     val password: String,
     /** PostgreSQL schema (default `public`) or Oracle owner (default = user). */
     val schemaName: String = "",
+    /** Optional path to a user-provided JDBC driver JAR (air-gapped environments). */
+    val driverJarPath: String = "",
     val queryTimeoutSeconds: Int = 10,
 )
 

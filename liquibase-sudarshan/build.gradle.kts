@@ -9,7 +9,7 @@ plugins {
 }
 
 group = "com.company.liquibasevalidator"
-version = "0.0.1"
+version = "0.0.2"
 
 repositories {
     mavenCentral()
@@ -18,12 +18,15 @@ repositories {
     }
 }
 
-// Kotlin stdlib for the command-line validator only: inside the IDE the platform provides
-// the stdlib (kotlin.stdlib.default.dependency=false), but plain JavaExec needs it.
+// Extras for the command-line validator only (NOT bundled into the plugin ZIP): the Kotlin
+// stdlib (inside the IDE the platform provides it) and the JDBC drivers (inside the IDE
+// they are downloaded on demand — keeping the plugin download ~20x smaller).
 val cliRuntime: Configuration by configurations.creating
 
 dependencies {
     cliRuntime("org.jetbrains.kotlin:kotlin-stdlib:2.0.21")
+    cliRuntime("org.postgresql:postgresql:42.7.4")
+    cliRuntime("com.oracle.database.jdbc:ojdbc11:23.5.0.24.07")
 
     intellijPlatform {
         intellijIdeaCommunity("2024.2.4", useInstaller = false)
@@ -35,11 +38,9 @@ dependencies {
         pluginVerifier()
     }
 
-    // Read-only database metadata / dry-run support (optional feature at runtime).
-    implementation("org.postgresql:postgresql:42.7.4")
-    implementation("com.oracle.database.jdbc:ojdbc11:23.5.0.24.07")
-
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
+    // classpath-resolution path of JdbcDrivers.ensureDriver is exercised in tests
+    testImplementation("org.postgresql:postgresql:42.7.4")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.opentest4j:opentest4j:1.3.0")
     testRuntimeOnly("org.junit.vintage:junit-vintage-engine:5.10.2")
@@ -55,14 +56,19 @@ intellijPlatform {
         name = "Liquibase Sudarshan - SQL & Data Validator"
         version = project.version.toString()
         changeNotes = """
+            <b>0.0.2</b> — Performance and size release: plugin download is ~20x smaller
+            (JDBC drivers are no longer bundled — they load from the classpath, a custom JAR,
+            or a one-click SHA-256-verified download from Maven Central); per-file validation
+            results are cached so unchanged files re-highlight instantly; editing data files
+            no longer invalidates the schema cache (only DDL changes do); lexer fast-path
+            optimizations.<br/>
             <b>0.0.1</b> — Initial public release: editor inspections with quick fixes for
             Liquibase SQL (datatypes, lengths, NULLs, MERGE mappings, duplicates, delimiters,
             changeset header/attribute typos), pre-commit and pre-push validation, read-only
             database dry run for PostgreSQL and Oracle (execution plan, INSERT/UPDATE data
             preview, live precondition checks), datasource tool window with DATABASECHANGELOG
             browser, and a headless CLI for CI/VS Code. IntelliJ IDEA 2023.2+ (Community and
-            Ultimate), no upper version bound. Full feature spec: specs/0.0.1/spec.md in the
-            repository.
+            Ultimate), no upper version bound.
         """.trimIndent()
         description = """
             Catch Liquibase, PostgreSQL and Oracle errors before they reach the database.

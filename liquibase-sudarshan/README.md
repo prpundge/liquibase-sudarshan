@@ -117,6 +117,20 @@ never flagged just because metadata is unavailable.
   the file action, and the pre-push hook — SELECTs only, on a server-enforced read-only
   transaction that is rolled back on close.
 
+## Database drivers (not bundled — keeps the plugin ~20x smaller)
+
+The plugin download is only ~0.5 MB because the JDBC drivers are resolved on demand,
+in this order:
+
+1. **One-click download** — when you first connect, the plugin offers to download the
+   driver for your JDBC URL (PostgreSQL ~1 MB / Oracle ~7 MB) from Maven Central,
+   verifies it against a **pinned SHA-256 checksum**, and caches it in
+   `~/.liquibase-sudarshan/drivers`. Also available as the *Download driver* button in
+   settings.
+2. **Custom driver JAR** — air-gapped environments can point *Driver JAR (optional)* in
+   settings at their own jar.
+3. The CLI (`validateRepo`) ships its drivers on its own Gradle classpath — no setup.
+
 ## Dialects
 
 The parser and datatype model understand **PostgreSQL** and **Oracle** syntax:

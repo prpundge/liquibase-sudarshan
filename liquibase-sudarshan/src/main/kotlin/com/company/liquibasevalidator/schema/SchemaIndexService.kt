@@ -40,6 +40,12 @@ class SchemaIndexService(private val project: Project) : Disposable {
 
     /** Row counts per table (lowercase) at the last fetch; only for small schemas. */
     @Volatile private var rowCounts: Map<String, Long> = emptyMap()
+
+    /** Bumped whenever the database overlay changes (refresh/clear). */
+    private val dbVersion = AtomicLong()
+
+    /** Path of the resolved DDL directory of the last snapshot; used to scope invalidation. */
+    @Volatile private var ddlDirPath: String? = null
     private val buildLock = Any()
 
     init {
@@ -47,12 +53,24 @@ class SchemaIndexService(private val project: Project) : Disposable {
             VirtualFileManager.VFS_CHANGES,
             object : BulkFileListener {
                 override fun after(events: List<VFileEvent>) {
-                    if (events.any { it.path.endsWith(".sql", ignoreCase = true) }) {
-                        vfsCounter.incrementAndGet()
+                    // Only DDL-directory changes invalidate the schema: editing/saving DML
+                    // files must not throw away the snapshot (or the per-file result cache).
+                    val ddlPath = ddlDirPath
+                    val relevant = events.any { event ->
+                        event.path.endsWith(".sql", ignoreCase = true) &&
+                            (ddlPath == null || event.path.startsWith(ddlPath, ignoreCase = true))
                     }
+                    if (relevant) vfsCounter.incrementAndGet()
                 }
             },
         )
+    }
+
+    /** Combined state stamp for per-file validation caching: changes whenever settings,
+     *  the DDL schema, or the database overlay change. */
+    fun validationStamp(): Long {
+        val settings = LiquibaseSettings.getInstance(project)
+        return settings.modificationCount * 1_000_003L + vfsCounter.get() * 31L + dbVersion.get()
     }
 
     /** Current schema snapshot; cheap when nothing changed. Safe from any background thread. */
@@ -82,6 +100,7 @@ class SchemaIndexService(private val project: Project) : Disposable {
         return try {
             ReadAction.compute<Snapshot, RuntimeException> {
                 val ddlDir = ProjectPaths.resolveDirectory(project, settings.globalDdlPath)
+                ddlDirPath = ddlDir?.path
                 if (ddlDir == null) {
                     Snapshot(key, tables = null, resolvedDirs = false)
                 } else {
@@ -122,6 +141,7 @@ class SchemaIndexService(private val project: Project) : Disposable {
         databaseTables = null
         executedChangesets = null
         rowCounts = emptyMap()
+        dbVersion.incrementAndGet()
     }
 
 
@@ -143,6 +163,7 @@ class SchemaIndexService(private val project: Project) : Disposable {
                         user = settings.dbUser,
                         password = DbPasswordStore.load(settings.dbUrl, settings.dbUser),
                         schemaName = settings.dbSchema,
+                        driverJarPath = settings.dbDriverJarPath,
                     )
                     val tableCount = JdbcConnector(config).withSession { session ->
                         val tables = session.fetchTables()
@@ -159,6 +180,7 @@ class SchemaIndexService(private val project: Project) : Disposable {
                         }
                         tables.size
                     }
+                    dbVersion.incrementAndGet()
                     onFinished(Result.success(tableCount))
                 } catch (e: Exception) {
                     log.warn("Database metadata fetch failed", e)

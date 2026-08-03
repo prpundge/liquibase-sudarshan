@@ -86,6 +86,7 @@ internal object CommitPushValidation {
                         user = state.dbUser,
                         password = DbPasswordStore.load(state.dbUrl, state.dbUser),
                         schemaName = state.dbSchema,
+                        driverJarPath = state.dbDriverJarPath,
                     ),
                 )
                 val dryRun = LiquibaseDryRun(connector, options).run(dryRunInputs, schema)

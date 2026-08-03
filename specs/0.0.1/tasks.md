@@ -33,7 +33,17 @@
 
 ## Roadmap
 
-### 0.0.2 (quality)
+### 0.0.2 (performance & size) — DELIVERED
+- [x] ~20x smaller download (8.2 MB → ~0.5 MB): JDBC drivers unbundled; resolved from
+      classpath → custom JAR → consented SHA-256-verified Maven Central download
+      (settings button + first-connect dialog; cache in ~/.liquibase-sudarshan/drivers)
+- [x] Per-file validation result cache (document stamp + schema/settings/db state stamp):
+      unchanged files re-highlight without re-parsing
+- [x] Schema invalidation scoped to the DDL directory — editing/saving data files no
+      longer discards the schema snapshot or the validation cache
+- [x] Lexer fast path: token case precomputed once instead of per-comparison
+
+### 0.0.3 (quality)
 - [ ] Fix the remaining deprecated-API note (CredentialAttributes constructor on 2025.1+)
 - [ ] Dry-run support for composite (multi-column) unique keys in the data preview
 - [ ] Oracle wallet / Autonomous Database (TNS_ADMIN) connection support

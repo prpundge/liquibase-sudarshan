@@ -23,12 +23,12 @@ data class SqlToken(
     val value: String,
     val start: Int,
     val end: Int,
+    /** Uppercased [text], precomputed once at lexing — the parser reads it in hot loops. */
+    val upper: String = text.uppercase(),
 ) {
     /** Case-insensitive keyword/identifier comparison for unquoted identifiers. */
     fun isKeyword(vararg keywords: String): Boolean =
         type == SqlTokenType.IDENT && keywords.any { it.equals(text, ignoreCase = true) }
-
-    val upper: String get() = text.uppercase()
 }
 
 /** A simple text range with absolute offsets (start inclusive, end exclusive). */

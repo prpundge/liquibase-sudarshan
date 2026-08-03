@@ -7,7 +7,6 @@ import com.company.liquibasevalidator.schema.SchemaOrigin
 import com.company.liquibasevalidator.schema.TableSchema
 import com.company.liquibasevalidator.sql.SqlDataType
 import com.company.liquibasevalidator.sql.TypeKind
-import oracle.jdbc.OracleDriver
 import java.sql.Connection
 import java.sql.SQLException
 import java.util.Properties
@@ -36,7 +35,9 @@ class JdbcConnector(private val config: DatabaseConfig) : DatabaseConnector {
                 setProperty("oracle.jdbc.ReadTimeout", "30000")
             }
         }
-        val driver = if (oracle) OracleDriver() else org.postgresql.Driver()
+        // drivers are resolved on demand (classpath → custom JAR → verified download cache);
+        // they are intentionally NOT bundled with the plugin to keep the download small
+        val driver = JdbcDrivers.ensureDriver(config.jdbcUrl, config.driverJarPath)
         val connection = driver.connect(config.jdbcUrl, props)
             ?: throw IllegalArgumentException("Unsupported JDBC URL: ${config.jdbcUrl}")
         connection.use { c ->
