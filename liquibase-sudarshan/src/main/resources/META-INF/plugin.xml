@@ -1,7 +1,7 @@
 <idea-plugin>
     <id>com.sudarshan.liquibase-validator</id>
     <name>Liquibase Sudarshan - SQL &amp; Data Validator</name>
-    <vendor email="pravins.exe@gmail.com">Sudarshan</vendor>
+    <vendor email="pravins.exe@gmail.com" url="https://github.com/prpundge">Pravin</vendor>
 
     <depends>com.intellij.modules.platform</depends>
 

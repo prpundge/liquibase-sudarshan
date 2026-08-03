@@ -97,8 +97,11 @@ intellijPlatform {
     }
 
     publishing {
-        // Set the env var before running: gradlew publishPlugin
+        // NEVER put the token itself in this file — it is a public repository.
+        // Provide it either as the JETBRAINS_MARKETPLACE_TOKEN environment variable or as
+        // marketplaceToken=perm:... in %USERPROFILE%\.gradle\gradle.properties (untracked).
         token = providers.environmentVariable("JETBRAINS_MARKETPLACE_TOKEN")
+            .orElse(providers.gradleProperty("marketplaceToken"))
     }
 
     signing {
