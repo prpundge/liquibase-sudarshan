@@ -122,6 +122,14 @@ object ValidatorCli {
                     val (line, column) = file.lineIndex.locate(pending.headerRange.start)
                     println("${file.path}:$line:$column: info: dry run — changeset '${pending.key}' is pending (${pending.reason})")
                 }
+                for (step in dryRun.plan) {
+                    val file = byId[step.fileId] ?: continue
+                    val (line, column) = file.lineIndex.locate(step.headerRange.start)
+                    println(
+                        "${file.path}:$line:$column: info: plan ${step.order}. ${step.action} '${step.key}' " +
+                            "(${step.statementCount} statement(s)) — ${step.reason}",
+                    )
+                }
                 for (row in dryRun.preview) {
                     val file = byId[row.fileId] ?: continue
                     val (line, column) = file.lineIndex.locate(row.range.start)

@@ -69,6 +69,21 @@ object LiquibaseParser {
                         formatted = true
                         if (headerRange == null) headerRange = SrcRange(line.start, line.end)
                     }
+                    lower.startsWith("liquibase") -> {
+                        // e.g. "--liquibase formated sql": without the exact header the whole
+                        // file is executed as plain SQL and every changeset is ignored
+                        val contentStart = line.start + line.text.indexOf(content.take(9))
+                        problems += LiquibaseProblem(
+                            message = "Liquibase: malformed header '--$content' — the exact header " +
+                                "'--liquibase formatted sql' is required, otherwise every changeset " +
+                                "in this file is ignored",
+                            range = SrcRange(line.start, line.end),
+                            isError = true,
+                            fixRange = SrcRange(contentStart, line.end),
+                            fixReplacement = "liquibase formatted sql",
+                            fixName = "Change to '--liquibase formatted sql'",
+                        )
+                    }
                     lower.startsWith("changeset") -> {
                         closeCurrent(line.start)
                         current = parseChangesetHeader(content, line, problems, changesets)
@@ -107,8 +122,26 @@ object LiquibaseParser {
             }
         }
         closeCurrent(text.length)
+        if (!formatted && changesets.isNotEmpty()) {
+            problems += LiquibaseProblem(
+                message = "Liquibase: this file contains changesets but no '--liquibase formatted sql' " +
+                    "header — Liquibase executes it as plain SQL and ignores every changeset, " +
+                    "so nothing is tracked in DATABASECHANGELOG",
+                range = changesets.first().headerRange,
+                isError = true,
+                fixRange = SrcRange(0, 0),
+                fixReplacement = "--liquibase formatted sql\n",
+                fixName = "Insert '--liquibase formatted sql' header",
+            )
+        }
         return LiquibaseFile(formatted, headerRange, changesets, problems)
     }
+
+    /** Attributes whose only legal values are true/false. */
+    private val BOOLEAN_ATTRIBUTES = setOf(
+        "runalways", "runonchange", "runintransaction", "failonerror",
+        "splitstatements", "stripcomments", "rollbacksplitstatements",
+    )
 
     // ---------------------------------------------------------------------------------------
 
@@ -164,7 +197,10 @@ object LiquibaseParser {
             val idx = token.indexOf(':')
             if (idx <= 0) continue
             val key = token.substring(0, idx).trim()
-            if (key.lowercase() in known) continue
+            if (key.lowercase() in known) {
+                validateAttributeValue(key, token.substring(idx + 1), token, line, known, problems)
+                continue
+            }
             // long attribute names are distinctive: allow a slightly larger typo distance
             val suggestion = TextDistance.nearest(key, known.values, if (key.length >= 10) 3 else 2)
             val keyStart = line.text.indexOf(token).takeIf { it >= 0 }?.plus(line.start)
@@ -180,6 +216,41 @@ object LiquibaseParser {
                 fixName = suggestion?.let { "Change '$key' to '$it'" },
             )
         }
+    }
+
+    /** `runOnChange:ture`, `onFail:HALTT` etc.: a bad value silently reverts to the default. */
+    private fun validateAttributeValue(
+        key: String,
+        value: String,
+        token: String,
+        line: Line,
+        known: Map<String, String>,
+        problems: MutableList<LiquibaseProblem>,
+    ) {
+        val keyLower = key.lowercase()
+        val allowed: List<String> = when {
+            keyLower in BOOLEAN_ATTRIBUTES -> listOf("true", "false")
+            keyLower == "onfail" || keyLower == "onerror" -> listOf("HALT", "CONTINUE", "MARK_RAN", "WARN")
+            else -> return
+        }
+        val cleaned = value.trim().removeSurrounding("\"")
+        if (allowed.any { it.equals(cleaned, ignoreCase = true) }) return
+        val canonical = known[keyLower] ?: key
+        val suggestion = TextDistance.nearest(cleaned, allowed, 2)
+        val tokenStart = line.text.indexOf(token).takeIf { it >= 0 }?.plus(line.start)
+        val valueStart = tokenStart?.plus(token.indexOf(':') + 1)
+        val fixRange = valueStart?.let { SrcRange(it, it + value.length) }
+        problems += LiquibaseProblem(
+            message = "Liquibase: invalid value '$cleaned' for '$canonical' — expected " +
+                allowed.joinToString(" or ") +
+                (suggestion?.let { "; did you mean '$it'?" } ?: "") +
+                " (an unrecognized value falls back to the default)",
+            range = fixRange ?: SrcRange(line.start, line.end),
+            isError = true,
+            fixRange = if (suggestion != null) fixRange else null,
+            fixReplacement = suggestion,
+            fixName = suggestion?.let { "Change '$cleaned' to '$it'" },
+        )
     }
 
     /**

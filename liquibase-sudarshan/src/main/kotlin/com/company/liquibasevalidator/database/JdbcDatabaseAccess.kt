@@ -99,6 +99,18 @@ private class JdbcSession(
         }
     }
 
+    override fun rowCount(table: String): Long? {
+        if (!identifier.matches(table)) return null
+        return try {
+            connection.prepareStatement("SELECT COUNT(*) FROM ${qualify(table)}").use { statement ->
+                statement.queryTimeout = config.queryTimeoutSeconds
+                statement.executeQuery().use { rs -> if (rs.next()) rs.getLong(1) else null }
+            }
+        } catch (_: SQLException) {
+            null
+        }
+    }
+
     override fun rowExists(table: String, column: String, value: String): Boolean? {
         // identifiers are strictly validated, then interpolated UNQUOTED so each database
         // applies its own case folding (Oracle upper, PostgreSQL lower)

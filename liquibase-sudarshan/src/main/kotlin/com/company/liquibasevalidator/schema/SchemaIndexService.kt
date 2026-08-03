@@ -37,6 +37,9 @@ class SchemaIndexService(private val project: Project) : Disposable {
 
     /** Executed changesets from DATABASECHANGELOG; null = table absent (fresh database). */
     @Volatile private var executedChangesets: List<String>? = null
+
+    /** Row counts per table (lowercase) at the last fetch; only for small schemas. */
+    @Volatile private var rowCounts: Map<String, Long> = emptyMap()
     private val buildLock = Any()
 
     init {
@@ -113,10 +116,14 @@ class SchemaIndexService(private val project: Project) : Disposable {
      *  null = the table does not exist (Liquibase has never run) or never connected. */
     fun currentExecutedChangesets(): List<String>? = executedChangesets
 
+    fun currentRowCounts(): Map<String, Long> = rowCounts
+
     fun clearDatabaseOverlay() {
         databaseTables = null
         executedChangesets = null
+        rowCounts = emptyMap()
     }
+
 
     /** Fetches DB metadata in a background task; never on the EDT, never during inspections. */
     fun refreshDatabaseMetadata(onFinished: (Result<Int>) -> Unit = {}) {
@@ -137,12 +144,22 @@ class SchemaIndexService(private val project: Project) : Disposable {
                         password = DbPasswordStore.load(settings.dbUrl, settings.dbUser),
                         schemaName = settings.dbSchema,
                     )
-                    val (tables, executed) = JdbcConnector(config).withSession {
-                        it.fetchTables() to it.executedChangesets()
+                    val tableCount = JdbcConnector(config).withSession { session ->
+                        val tables = session.fetchTables()
+                        databaseTables = tables
+                        executedChangesets = session.executedChangesets()?.sorted()
+                        // row counts give the datasource browser a real DB-navigator feel;
+                        // only for small schemas so big databases never slow the fetch down
+                        rowCounts = if (tables.size <= MAX_TABLES_FOR_ROW_COUNTS) {
+                            tables.keys.mapNotNull { name ->
+                                session.rowCount(name)?.let { name to it }
+                            }.toMap()
+                        } else {
+                            emptyMap()
+                        }
+                        tables.size
                     }
-                    databaseTables = tables
-                    executedChangesets = executed?.sorted()
-                    onFinished(Result.success(tables.size))
+                    onFinished(Result.success(tableCount))
                 } catch (e: Exception) {
                     log.warn("Database metadata fetch failed", e)
                     onFinished(Result.failure(e))
@@ -157,6 +174,8 @@ class SchemaIndexService(private val project: Project) : Disposable {
     }
 
     companion object {
+        private const val MAX_TABLES_FOR_ROW_COUNTS = 50
+
         // getService(Class), not the inline service<T>() helper — 2023.2 compatibility.
         fun getInstance(project: Project): SchemaIndexService =
             project.getService(SchemaIndexService::class.java)

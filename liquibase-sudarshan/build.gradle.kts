@@ -9,7 +9,7 @@ plugins {
 }
 
 group = "com.company.liquibasevalidator"
-version = "1.1.0"
+version = "0.0.1"
 
 repositories {
     mavenCentral()
@@ -55,10 +55,14 @@ intellijPlatform {
         name = "Liquibase Sudarshan - SQL & Data Validator"
         version = project.version.toString()
         changeNotes = """
-            <b>1.1.0</b> — Renamed to Liquibase Sudarshan. Pre-commit and pre-push Liquibase
-            validation, read-only database dry run (pending changesets, precondition checks,
-            FK verification) for PostgreSQL and Oracle datasources, compatibility widened to
-            IntelliJ IDEA 2023.2+ (Community and Ultimate) with no upper version bound.
+            <b>0.0.1</b> — Initial public release: editor inspections with quick fixes for
+            Liquibase SQL (datatypes, lengths, NULLs, MERGE mappings, duplicates, delimiters,
+            changeset header/attribute typos), pre-commit and pre-push validation, read-only
+            database dry run for PostgreSQL and Oracle (execution plan, INSERT/UPDATE data
+            preview, live precondition checks), datasource tool window with DATABASECHANGELOG
+            browser, and a headless CLI for CI/VS Code. IntelliJ IDEA 2023.2+ (Community and
+            Ultimate), no upper version bound. Full feature spec: specs/0.0.1/spec.md in the
+            repository.
         """.trimIndent()
         description = """
             Catch Liquibase, PostgreSQL and Oracle errors before they reach the database.

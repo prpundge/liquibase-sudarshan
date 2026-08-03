@@ -192,6 +192,12 @@ private class ReportPanel(private val project: Project) : JPanel(BorderLayout())
         if (warnings.childCount > 0) root.add(warnings)
         if (infos.childCount > 0) root.add(infos)
 
+        if (report.plan.isNotEmpty()) {
+            val planRoot = DefaultMutableTreeNode("Execution plan — dry run (${report.plan.size} changesets)")
+            report.plan.forEach { planRoot.add(PreviewNode(it)) }
+            root.add(planRoot)
+        }
+
         if (report.previews.isNotEmpty()) {
             val previewRoot = DefaultMutableTreeNode("Data preview — dry run (${report.previews.size} rows)")
             for ((changeset, rows) in report.previews.groupBy { it.changesetKey ?: "(no changeset)" }) {

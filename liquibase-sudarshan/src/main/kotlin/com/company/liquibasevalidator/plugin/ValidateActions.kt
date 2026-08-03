@@ -71,6 +71,7 @@ internal object ValidationRunner {
                 var pendingCount = 0
                 var dryRunNote: String? = null
                 val previewItems = mutableListOf<PreviewItem>()
+                val planItems = mutableListOf<PreviewItem>()
                 val state = settings.state
                 if (state.dbValidationEnabled && state.dbUrl.isNotBlank() && dryRunInputs.isNotEmpty()) {
                     indicator.text2 = "Database dry run..."
@@ -118,6 +119,18 @@ internal object ValidationRunner {
                                 label = "${row.action} ${row.tableName} ${row.keyColumn}='${row.keyValue}'",
                             )
                         }
+                        for (step in dryRun.plan) {
+                            val data = fileData[step.fileId] ?: continue
+                            planItems += PreviewItem(
+                                file = data.file,
+                                displayPath = data.displayPath,
+                                line = TextLinesUtil.lineOf(data.text, step.headerRange.start),
+                                offset = step.headerRange.start,
+                                changesetKey = step.key,
+                                label = "${step.order}. ${step.action} '${step.key}' " +
+                                    "(${step.statementCount} statement(s)) — ${step.reason}",
+                            )
+                        }
                     } catch (e: Exception) {
                         log.warn("Database dry run failed", e)
                         dryRunNote = "Database dry run could not connect: ${e.message}"
@@ -128,6 +141,7 @@ internal object ValidationRunner {
                     files.size,
                     items.sortedWith(compareBy({ it.severity }, { it.displayPath }, { it.line })),
                     previewItems,
+                    planItems,
                 )
                 val summary = buildString {
                     append("Files scanned: ${report.filesScanned}, errors: ${report.errorCount}, ")
@@ -169,6 +183,41 @@ class ValidateLiquibaseFileAction : AnAction() {
         val file = e.getData(CommonDataKeys.VIRTUAL_FILE) ?: return
         val files = if (file.isDirectory) RepositoryScanner.filesUnder(file) else listOf(file)
         ValidationRunner.run(project, files, "Validating Liquibase SQL")
+    }
+}
+
+/**
+ * "Dry Run Against Database" on a single SQL file: validates it and simulates its execution
+ * against the configured datasource (execution plan, data preview, live preconditions) —
+ * the SQL Developer-style what-would-happen view, without executing anything.
+ */
+class DryRunFileAction : AnAction() {
+
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+
+    override fun update(e: AnActionEvent) {
+        val file = e.getData(CommonDataKeys.VIRTUAL_FILE)
+        e.presentation.isEnabledAndVisible = e.project != null && file != null &&
+            !file.isDirectory && file.extension.equals("sql", ignoreCase = true)
+    }
+
+    override fun actionPerformed(e: AnActionEvent) {
+        val project = e.project ?: return
+        val file = e.getData(CommonDataKeys.VIRTUAL_FILE) ?: return
+        val state = LiquibaseSettings.getInstance(project).state
+        if (!state.dbValidationEnabled || state.dbUrl.isBlank()) {
+            NotificationGroupManager.getInstance()
+                .getNotificationGroup("Liquibase Sudarshan")
+                .createNotification(
+                    "Liquibase Sudarshan",
+                    "No datasource configured — enable database validation and set the JDBC URL " +
+                        "under Settings | Tools | Liquibase Sudarshan.",
+                    NotificationType.WARNING,
+                )
+                .notify(project)
+            return
+        }
+        ValidationRunner.run(project, listOf(file), "Dry run against database: ${file.name}")
     }
 }
 

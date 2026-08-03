@@ -63,6 +63,11 @@
                 text="Validate Liquibase SQL"
                 description="Validate the selected Liquibase SQL file or directory against the repository schema"/>
             <action
+                id="LiquibaseSudarshan.DryRunFile"
+                class="com.company.liquibasevalidator.plugin.DryRunFileAction"
+                text="Dry Run Against Database"
+                description="Simulate this SQL file against the configured datasource: execution plan, data preview and live precondition checks — read-only"/>
+            <action
                 id="LiquibaseSudarshan.ValidateRepository"
                 class="com.company.liquibasevalidator.plugin.ValidateLiquibaseRepositoryAction"
                 text="Validate Liquibase Repository"

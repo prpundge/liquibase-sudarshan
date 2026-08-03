@@ -38,6 +38,19 @@ class LiquibaseDryRun(
 
     enum class RowAction { INSERT, UPDATE, CONFLICT, UNKNOWN }
 
+    enum class RunAction { RUN, SKIP, HALT, BLOCKED }
+
+    /** One changeset in the simulated execution order — what `liquibase update` would do. */
+    data class PlanStep(
+        val fileId: String,
+        val key: String,
+        val order: Int,
+        val action: RunAction,
+        val reason: String,
+        val statementCount: Int,
+        val headerRange: SrcRange,
+    )
+
     /** One statically-known data row and what would happen to it on the live database. */
     data class PreviewRow(
         val fileId: String,
@@ -53,6 +66,8 @@ class LiquibaseDryRun(
         val findings: List<Finding>,
         val pending: List<PendingChangeset>,
         val preview: List<PreviewRow>,
+        /** Simulated `liquibase update` execution order across all files. */
+        val plan: List<PlanStep>,
         /** False when DATABASECHANGELOG does not exist (fresh database). */
         val changelogTableFound: Boolean,
         val notes: List<String>,
@@ -65,10 +80,13 @@ class LiquibaseDryRun(
         val pending = mutableListOf<PendingChangeset>()
         val preview = mutableListOf<PreviewRow>()
         val notes = mutableListOf<String>()
+        val haltedChangesets = mutableSetOf<Pair<String, String>>()
         var changelogFound = false
+        var executedSet: Set<String>? = null
 
         connector.withSession { session ->
             val executed = session.executedChangesets()
+            executedSet = executed
             changelogFound = executed != null
             if (executed == null) {
                 notes += "DATABASECHANGELOG not found — fresh database, every changeset is pending"
@@ -77,7 +95,7 @@ class LiquibaseDryRun(
             for (file in files) {
                 val gate = ExecutionGate(file.analysis, executed)
                 collectPending(file, executed, pending)
-                checkPreconditions(file, gate, session, findings)
+                checkPreconditions(file, gate, session, findings, haltedChangesets)
                 if (options.validateForeignKeys) checkForeignKeys(file, gate, schema, session, findings)
                 if (options.validateDuplicates) checkPrimaryKeyConflicts(file, gate, schema, session, findings, preview)
                 buildStagingPreview(file, gate, session, preview)
@@ -86,7 +104,51 @@ class LiquibaseDryRun(
         if (preview.size > MAX_PREVIEW_ROWS) {
             notes += "Data preview truncated to $MAX_PREVIEW_ROWS rows (${preview.size} total)"
         }
-        return DryRunResult(findings, pending, preview.take(MAX_PREVIEW_ROWS), changelogFound, notes)
+        return DryRunResult(
+            findings, pending, preview.take(MAX_PREVIEW_ROWS),
+            buildPlan(files, executedSet, haltedChangesets),
+            changelogFound, notes,
+        )
+    }
+
+    /** Simulates the update run: RUN / SKIP (already executed) / HALT (failing precondition,
+     *  onFail:HALT) — and everything after a HALT is BLOCKED, exactly as Liquibase behaves. */
+    private fun buildPlan(
+        files: List<FileInput>,
+        executed: Set<String>?,
+        halted: Set<Pair<String, String>>,
+    ): List<PlanStep> {
+        val plan = mutableListOf<PlanStep>()
+        var order = 0
+        var blocked = false
+        for (file in files) {
+            for (changeset in file.analysis.liquibase.changesets) {
+                order++
+                val statementCount = file.analysis.script.statements.count {
+                    it.range.start >= changeset.bodyRange.start && it.range.start < changeset.bodyRange.end
+                }
+                val alreadyExecuted = executed != null && changeset.key.lowercase() in executed
+                val runAlways = changeset.attributes["runalways"].equals("true", true)
+                val (action, reason) = when {
+                    alreadyExecuted && !runAlways && !changeset.runOnChange ->
+                        RunAction.SKIP to "already in DATABASECHANGELOG"
+                    blocked -> RunAction.BLOCKED to "blocked by an earlier HALT — will not run"
+                    (file.fileId to changeset.key) in halted ->
+                        RunAction.HALT to "precondition fails against the live database (onFail:HALT)"
+                    alreadyExecuted && runAlways -> RunAction.RUN to "runAlways:true"
+                    alreadyExecuted && changeset.runOnChange ->
+                        RunAction.RUN to "runOnChange:true — runs only if its content changed"
+                    else -> RunAction.RUN to
+                        (if (executed == null) "fresh database" else "not in DATABASECHANGELOG yet")
+                }
+                if (action == RunAction.HALT) blocked = true
+                plan += PlanStep(
+                    file.fileId, changeset.key, order, action, reason, statementCount,
+                    changeset.headerRange,
+                )
+            }
+        }
+        return plan
     }
 
     // ---------------------------------------------------------------------------------------
@@ -136,6 +198,7 @@ class LiquibaseDryRun(
         gate: ExecutionGate,
         session: DatabaseSession,
         findings: MutableList<Finding>,
+        haltedChangesets: MutableSet<Pair<String, String>>,
     ) {
         for (changeset in file.analysis.liquibase.changesets) {
             if (!gate.appliesTo(changeset)) continue
@@ -179,10 +242,12 @@ class LiquibaseDryRun(
                         ),
                     )
                 } else if (!resultsMatch(expected, actual)) {
+                    val halts = onFail.equals("HALT", true)
+                    if (halts) haltedChangesets += file.fileId to changeset.key
                     findings += Finding(
                         file.fileId,
                         ValidationProblem(
-                            if (onFail.equals("HALT", true)) Severity.ERROR else Severity.WARNING,
+                            if (halts) Severity.ERROR else Severity.WARNING,
                             ProblemCategory.DATABASE,
                             "Liquibase: precondition expects '$expected' but the database returned '$actual' — " +
                                 "changeset '${changeset.key}' would ${onFail.uppercase()} on update",

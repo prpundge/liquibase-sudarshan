@@ -34,6 +34,8 @@ data class ValidationReport(
     val filesScanned: Int,
     val items: List<ReportItem>,
     val previews: List<PreviewItem> = emptyList(),
+    /** Simulated liquibase-update execution order (dry run). */
+    val plan: List<PreviewItem> = emptyList(),
 ) {
     val errorCount: Int get() = items.count { it.severity == Severity.ERROR }
     val warningCount: Int get() =

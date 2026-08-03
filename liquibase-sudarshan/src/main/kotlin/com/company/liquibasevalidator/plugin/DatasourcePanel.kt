@@ -49,8 +49,10 @@ internal class DatasourcePanel(private val project: Project) : JPanel(BorderLayo
     /** Last connection failure; keeps the lamp red until the next successful connect. */
     private var lastError: String? = null
 
-    private class TableNode(val table: TableSchema) : DefaultMutableTreeNode() {
-        override fun toString(): String = "${table.name}  (${table.columns.size} columns)"
+    private class TableNode(val table: TableSchema, private val rowCount: Long?) : DefaultMutableTreeNode() {
+        override fun toString(): String =
+            "${table.name}  (${table.columns.size} columns" +
+                (rowCount?.let { ", $it row(s)" } ?: "") + ")"
     }
 
     private class ColumnNode(val text: String) : DefaultMutableTreeNode() {
@@ -187,8 +189,9 @@ internal class DatasourcePanel(private val project: Project) : JPanel(BorderLayo
             }
             root.add(changelogNode)
         }
+        val rowCounts = SchemaIndexService.getInstance(project).currentRowCounts()
         tables?.values?.sortedBy { it.name }?.forEach { table ->
-            val node = TableNode(table)
+            val node = TableNode(table, rowCounts[table.nameLower])
             for (column in table.columns) {
                 val flags = buildString {
                     if (!column.nullable) append("  NOT NULL")

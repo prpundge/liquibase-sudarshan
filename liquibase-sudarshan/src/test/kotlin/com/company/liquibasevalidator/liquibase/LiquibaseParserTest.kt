@@ -1,5 +1,6 @@
 package com.company.liquibasevalidator.liquibase
 
+import com.company.liquibasevalidator.sql.SrcRange
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -169,6 +170,62 @@ class LiquibaseParserTest {
         """.trimIndent()
         val problem = LiquibaseParser.parse(text).problems.single()
         assertTrue(problem.message.contains("did you mean 'onFail'"))
+    }
+
+    @Test
+    fun `malformed liquibase header is an error with fix`() {
+        val text = """
+            --liquibase formated sql
+            --changeset a:1
+            SELECT 1;
+        """.trimIndent()
+        val problems = LiquibaseParser.parse(text).problems
+        val header = problems.single { it.message.contains("malformed header") }
+        assertTrue(header.isError)
+        assertEquals("liquibase formatted sql", header.fixReplacement)
+        // and because the header is broken, the file is not formatted: that is ALSO flagged
+        assertTrue(problems.any { it.message.contains("no '--liquibase formatted sql' header") })
+    }
+
+    @Test
+    fun `changesets without formatted header are an error with insert-header fix`() {
+        val text = """
+            --changeset a:1
+            SELECT 1;
+        """.trimIndent()
+        val problem = LiquibaseParser.parse(text).problems.single()
+        assertTrue(problem.isError)
+        assertTrue(problem.message.contains("no '--liquibase formatted sql' header"))
+        assertEquals(SrcRange(0, 0), problem.fixRange)
+        assertEquals("--liquibase formatted sql\n", problem.fixReplacement)
+    }
+
+    @Test
+    fun `invalid boolean attribute value is an error with suggestion`() {
+        val text = """
+            --liquibase formatted sql
+            --changeset a:1 runOnChange:ture
+            SELECT 1;
+        """.trimIndent()
+        val problem = LiquibaseParser.parse(text).problems.single()
+        assertTrue(problem.isError)
+        assertTrue(problem.message.contains("expected true or false"))
+        assertTrue(problem.message.contains("did you mean 'true'"))
+        assertEquals("ture", text.substring(problem.fixRange!!.start, problem.fixRange!!.end))
+        assertEquals("true", problem.fixReplacement)
+    }
+
+    @Test
+    fun `invalid onFail value is an error with suggestion`() {
+        val text = """
+            --liquibase formatted sql
+            --changeset a:1
+            --preconditions onFail:HALTT
+            SELECT 1;
+        """.trimIndent()
+        val problem = LiquibaseParser.parse(text).problems.single()
+        assertTrue(problem.message.contains("expected HALT or CONTINUE or MARK_RAN or WARN"))
+        assertEquals("HALT", problem.fixReplacement)
     }
 
     @Test

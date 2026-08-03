@@ -255,6 +255,46 @@ class LiquibaseDryRunTest {
     }
 
     @Test
+    fun `execution plan simulates run skip halt and blocked in order`() {
+        val sql = """
+            --liquibase formatted sql
+            --changeset team:001
+            INSERT INTO customer_type (id, code, name) VALUES (1, 'RETAIL', 'Retail');
+            --changeset team:002
+            --preconditions onFail:HALT
+            --precondition-sql-check expectedResult:0 SELECT COUNT(*) FROM customer_type
+            INSERT INTO customer_type (id, code, name) VALUES (2, 'CORP', 'Corporate');
+            --changeset team:003
+            INSERT INTO customer_type (id, code, name) VALUES (3, 'GOV', 'Government');
+        """.trimIndent()
+        val session = FakeSession(
+            executed = setOf("team:001"),
+            scalars = mapOf("SELECT COUNT(*) FROM customer_type" to "7"),
+        )
+        val result = dryRun(session, input(sql))
+        val actions = result.plan.map { it.key to it.action }
+        assertEquals(
+            listOf(
+                "team:001" to LiquibaseDryRun.RunAction.SKIP,
+                "team:002" to LiquibaseDryRun.RunAction.HALT,
+                "team:003" to LiquibaseDryRun.RunAction.BLOCKED,
+            ),
+            actions,
+        )
+        assertEquals(listOf(1, 2, 3), result.plan.map { it.order })
+        assertTrue(result.plan[0].reason.contains("already in DATABASECHANGELOG"))
+        assertTrue(result.plan[2].reason.contains("blocked"))
+        assertEquals(1, result.plan[1].statementCount)
+    }
+
+    @Test
+    fun `plan marks pending changesets as run on a fresh database`() {
+        val result = dryRun(FakeSession(executed = null), input(changesetSql))
+        assertTrue(result.plan.all { it.action == LiquibaseDryRun.RunAction.RUN })
+        assertTrue(result.plan[0].reason.contains("fresh database"))
+    }
+
+    @Test
     fun `sql guard rejects everything but a single select`() {
         assertEquals("SELECT 1", SqlGuards.requireSingleSelect("  SELECT 1; "))
         assertThrows(IllegalArgumentException::class.java) { SqlGuards.requireSingleSelect("DELETE FROM t") }

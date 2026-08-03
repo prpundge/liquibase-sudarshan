@@ -161,14 +161,14 @@ Requirements: JDK 21 (Gradle toolchain), internet access for the first build.
 ./gradlew build      # compile + all unit and platform tests + plugin ZIP
 ./gradlew runIde     # launch a sandbox IntelliJ IDEA with the plugin installed
 ./gradlew test       # tests only
-./gradlew buildPlugin  # produces build/distributions/liquibase-sudarshan-1.1.0.zip
+./gradlew buildPlugin  # produces build/distributions/liquibase-sudarshan-0.0.1.zip
 ```
 
 ### Installing the built plugin
 
 1. `./gradlew buildPlugin`
 2. In IntelliJ IDEA: **Settings | Plugins | ⚙ | Install Plugin from Disk…**
-3. Choose `build/distributions/liquibase-sudarshan-1.1.0.zip`, restart the IDE.
+3. Choose `build/distributions/liquibase-sudarshan-0.0.1.zip`, restart the IDE.
 4. Open your database repository, configure **Settings | Tools | Liquibase Sudarshan**.
 
 **IDE compatibility:** IntelliJ IDEA (Community or Ultimate) **2023.2 and every newer
@@ -181,7 +181,7 @@ without an update. Compatibility is checked with the JetBrains Plugin Verifier
 
 One-time setup: create a JetBrains account, open <https://plugins.jetbrains.com>, and add a
 vendor profile. Then either upload manually (first release must be manual):
-**Upload plugin** → select `build/distributions/liquibase-sudarshan-1.1.0.zip`, choose
+**Upload plugin** → select `build/distributions/liquibase-sudarshan-0.0.1.zip`, choose
 license and category (*Tools integration*), submit for review (~2 business days).
 Subsequent releases can be automated: generate a **Personal Access Token** on the
 Marketplace (profile → My Tokens), then

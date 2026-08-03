@@ -30,6 +30,9 @@ interface DatabaseSession : AutoCloseable {
     /** True/false when a row where [column] = [value] (compared as trimmed text) provably
      *  exists / does not exist; null when the identifiers cannot be probed safely. */
     fun rowExists(table: String, column: String, value: String): Boolean?
+
+    /** Row count of [table], or null when it cannot be counted safely. */
+    fun rowCount(table: String): Long? = null
 }
 
 /** Shared guard: the only statement shape the plugin is ever allowed to evaluate. */
