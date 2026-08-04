@@ -43,6 +43,17 @@
       longer discards the schema snapshot or the validation cache
 - [x] Lexer fast path: token case precomputed once instead of per-comparison
 
+### 0.0.2 addendum (PR-review & editors) — DELIVERED
+- [x] PR-review mode: `--patch=<.diff/.patch>` limits findings to the changed lines
+      (unified-diff parser, BOM/UTF-16-tolerant) — one review round instead of
+      trial-and-error PRs
+- [x] `--github` flag: findings as GitHub Actions annotations (inline PR comments)
+- [x] CI workflow (`.github/workflows/liquibase-validate.yml`): build + tests +
+      repository validation with annotations
+- [x] Standalone CLI fat-jar (`gradlew cliJar`) — no Gradle needed at validation time
+- [x] VS Code extension (engines ^1.60.0, zero dependencies, 6 KB .vsix): inline
+      squiggles + Problems panel, validate-on-save, dry-run capable via extraArgs
+
 ### 0.0.3 (quality)
 - [ ] Fix the remaining deprecated-API note (CredentialAttributes constructor on 2025.1+)
 - [ ] Dry-run support for composite (multi-column) unique keys in the data preview

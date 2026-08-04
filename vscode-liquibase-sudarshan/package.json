@@ -1,0 +1,77 @@
+{
+    "name": "liquibase-sudarshan",
+    "displayName": "Liquibase Sudarshan - SQL & Data Validator",
+    "description": "Validate Liquibase SQL repositories before execution: datatypes, lengths, NULLs, MERGE mappings, duplicates, changeset headers - plus a read-only database dry run (PostgreSQL & Oracle). Findings appear inline and in the Problems panel.",
+    "version": "0.0.2",
+    "publisher": "prpundge",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/prpundge/liquibase-sudarshan"
+    },
+    "engines": {
+        "vscode": "^1.60.0"
+    },
+    "categories": [
+        "Linters",
+        "Programming Languages"
+    ],
+    "keywords": [
+        "liquibase",
+        "sql",
+        "oracle",
+        "postgresql",
+        "database",
+        "validation"
+    ],
+    "activationEvents": [
+        "onLanguage:sql",
+        "workspaceContains:**/*.sql"
+    ],
+    "main": "./extension.js",
+    "contributes": {
+        "commands": [
+            {
+                "command": "liquibaseSudarshan.validateRepository",
+                "title": "Liquibase Sudarshan: Validate Repository"
+            },
+            {
+                "command": "liquibaseSudarshan.clearDiagnostics",
+                "title": "Liquibase Sudarshan: Clear Findings"
+            }
+        ],
+        "configuration": {
+            "title": "Liquibase Sudarshan",
+            "properties": {
+                "liquibaseSudarshan.cliJar": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Path to liquibase-sudarshan-cli-<version>.jar (build it with: gradlew cliJar). Required."
+                },
+                "liquibaseSudarshan.javaPath": {
+                    "type": "string",
+                    "default": "java",
+                    "description": "Java 17+ executable used to run the validator."
+                },
+                "liquibaseSudarshan.repositoryPath": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Repository root to validate. Empty = the first workspace folder."
+                },
+                "liquibaseSudarshan.extraArgs": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [],
+                    "description": "Extra CLI arguments, e.g. [\"--oracle\", \"--country=SG\", \"--db-url=jdbc:oracle:thin:@//localhost:1521/FREEPDB1\", \"--db-user=app_user\", \"--db-password=app_pass\"]."
+                },
+                "liquibaseSudarshan.runOnSave": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Re-validate the repository whenever a .sql file is saved."
+                }
+            }
+        }
+    }
+}

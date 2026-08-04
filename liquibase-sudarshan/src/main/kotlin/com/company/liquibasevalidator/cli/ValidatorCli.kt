@@ -14,27 +14,25 @@ import java.nio.file.Paths
 import kotlin.io.path.absolutePathString
 import kotlin.io.path.extension
 import kotlin.io.path.isDirectory
+import kotlin.io.path.isRegularFile
 import kotlin.io.path.name
 import kotlin.io.path.readText
 import kotlin.streams.toList
 
 /**
  * Command-line runner for the validation engine, so repositories can be validated outside
- * IntelliJ (CI pipelines, VS Code tasks, pre-commit hooks). Pure static validation — no
- * database access, no SQL execution.
+ * IntelliJ (CI pipelines, VS Code, pre-commit hooks). Pure static validation — no database
+ * access unless --db-url is given, and then strictly read-only.
  *
  * Usage:
  *   ValidatorCli <repoRoot> [--country=XX] [--oracle] [--fail-on-warnings]
- *                [--ddl=<dir>] [--data=<dir>] (repeatable; default: auto-detect
- *                database/global/ddl, database/global/staticdatasetup, database/countries)
- *                [--db-url=<jdbc url> --db-user=<user> [--db-password=<pass>] [--db-schema=<schema>]]
+ *                [--ddl=<dir>] [--data=<dir>]   (repeatable; default: auto-detect)
+ *                [--db-url=<jdbc> --db-user=<u> [--db-password=<p>] [--db-schema=<s>]]
+ *                [--patch=<file.diff>]   PR-review mode: only findings on changed lines
+ *                [--github]              emit GitHub Actions annotations (inline PR comments)
  *
- * With --db-url a read-only DRY RUN also executes: pending changesets (DATABASECHANGELOG),
- * live SELECT precondition checks, FK/PK probes and the INSERT/UPDATE data preview.
- * The password may instead come from the LIQUIBASE_SUDARSHAN_DB_PASSWORD environment variable.
- *
- * Output (one finding per line, gcc-style so editors can parse it):
- *   <absolute path>:<line>:<column>: <error|warning|info>: <message>
+ * Output (default): <absolute path>:<line>:<column>: <error|warning|info>: <message>
+ * Output (--github): ::error file=<relative>,line=<l>,col=<c>::<message>
  */
 object ValidatorCli {
 
@@ -52,6 +50,23 @@ object ValidatorCli {
         val failOnWarnings = args.contains("--fail-on-warnings")
         val options = ValidationOptions(treatEmptyStringAsNull = args.contains("--oracle"))
 
+        val patch = args.optionValue("--patch")?.let { patchPath ->
+            val file = Paths.get(patchPath).let { if (it.isAbsolute) it else root.resolve(it) }
+            if (!file.isRegularFile()) {
+                System.err.println("error: patch file not found: $file")
+                kotlin.system.exitProcess(2)
+            }
+            val parsed = PatchFilter.parse(decodeTextAuto(Files.readAllBytes(file)))
+            if (parsed.fileCount == 0) {
+                System.err.println(
+                    "warning: patch file contains no file changes — every finding will be suppressed " +
+                        "(generate it with: git diff --output=changes.diff, not a shell '>' redirect)",
+                )
+            }
+            parsed
+        }
+        val reporter = Reporter(github = args.contains("--github"), repoRoot = root, patch = patch)
+
         val ddlDirs = args.optionValues("--ddl").map { root.resolve(it) }.ifEmpty { detectDdlDirs(root) }
         val dataDirs = args.optionValues("--data").map { root.resolve(it) }.ifEmpty { detectDataDirs(root, country) }
 
@@ -67,8 +82,6 @@ object ValidatorCli {
 
         val engine = ValidationEngine(options)
         val files = (ddlFiles + dataDirs.flatMap(::sqlFilesUnder)).distinct()
-        var errors = 0
-        var warnings = 0
 
         data class AnalyzedFile(val path: String, val lineIndex: LineIndex, val input: LiquibaseDryRun.FileInput)
         val analyzed = mutableListOf<AnalyzedFile>()
@@ -83,13 +96,7 @@ object ValidatorCli {
             )
             for (problem in result.problems) {
                 val (line, column) = lineIndex.locate(problem.range.start)
-                val severity = when (problem.severity) {
-                    Severity.ERROR -> { errors++; "error" }
-                    Severity.WARNING -> { warnings++; "warning" }
-                    Severity.WEAK_WARNING -> { warnings++; "warning" }
-                    Severity.INFO -> "info"
-                }
-                println("${file.absolutePathString()}:$line:$column: $severity: ${problem.message}")
+                reporter.finding(file.absolutePathString(), line, column, problem.severity, problem.message)
             }
         }
 
@@ -102,31 +109,32 @@ object ValidatorCli {
                 password = args.optionValue("--db-password")
                     ?: System.getenv("LIQUIBASE_SUDARSHAN_DB_PASSWORD").orEmpty(),
                 schemaName = args.optionValue("--db-schema").orEmpty(),
+                driverJarPath = args.optionValue("--db-driver-jar").orEmpty(),
             )
             val byId = analyzed.associateBy { it.path }
             try {
                 val dryRun = LiquibaseDryRun(JdbcConnector(config), options)
                     .run(analyzed.map { it.input }, schema)
-                dryRun.notes.forEach { println("dry-run: $it") }
+                dryRun.notes.forEach { reporter.note("dry-run: $it") }
                 for (finding in dryRun.findings) {
                     val file = byId[finding.fileId] ?: continue
                     val (line, column) = file.lineIndex.locate(finding.problem.range.start)
-                    val severity = when (finding.problem.severity) {
-                        Severity.ERROR -> { errors++; "error" }
-                        else -> { warnings++; "warning" }
-                    }
-                    println("${file.path}:$line:$column: $severity: ${finding.problem.message}")
+                    reporter.finding(file.path, line, column, finding.problem.severity, finding.problem.message)
                 }
                 for (pending in dryRun.pending) {
                     val file = byId[pending.fileId] ?: continue
                     val (line, column) = file.lineIndex.locate(pending.headerRange.start)
-                    println("${file.path}:$line:$column: info: dry run — changeset '${pending.key}' is pending (${pending.reason})")
+                    reporter.info(
+                        file.path, line, column,
+                        "dry run — changeset '${pending.key}' is pending (${pending.reason})",
+                    )
                 }
                 for (step in dryRun.plan) {
                     val file = byId[step.fileId] ?: continue
                     val (line, column) = file.lineIndex.locate(step.headerRange.start)
-                    println(
-                        "${file.path}:$line:$column: info: plan ${step.order}. ${step.action} '${step.key}' " +
+                    reporter.info(
+                        file.path, line, column,
+                        "plan ${step.order}. ${step.action} '${step.key}' " +
                             "(${step.statementCount} statement(s)) — ${step.reason}",
                     )
                 }
@@ -134,7 +142,10 @@ object ValidatorCli {
                     val file = byId[row.fileId] ?: continue
                     val (line, column) = file.lineIndex.locate(row.range.start)
                     val changeset = row.changesetKey?.let { " [changeset $it]" } ?: ""
-                    println("${file.path}:$line:$column: info: preview: ${row.action} ${row.tableName} ${row.keyColumn}='${row.keyValue}'$changeset")
+                    reporter.info(
+                        file.path, line, column,
+                        "preview: ${row.action} ${row.tableName} ${row.keyColumn}='${row.keyValue}'$changeset",
+                    )
                 }
             } catch (e: Exception) {
                 System.err.println("error: dry run failed: ${e.message ?: e.javaClass.simpleName}")
@@ -143,11 +154,86 @@ object ValidatorCli {
         }
 
         println()
-        println("Liquibase Sudarshan: ${files.size} file(s) scanned, $errors error(s), $warnings warning(s)")
-        if (errors > 0 || (failOnWarnings && warnings > 0)) kotlin.system.exitProcess(1)
+        if (patch != null && reporter.suppressed > 0) {
+            println(
+                "PR-review mode: ${reporter.suppressed} finding(s) outside the patch's changed " +
+                    "lines were suppressed (patch touches ${patch.fileCount} file(s))",
+            )
+        }
+        println(
+            "Liquibase Sudarshan: ${files.size} file(s) scanned, " +
+                "${reporter.errors} error(s), ${reporter.warnings} warning(s)",
+        )
+        if (reporter.errors > 0 || (failOnWarnings && reporter.warnings > 0)) kotlin.system.exitProcess(1)
     }
 
     // ---------------------------------------------------------------------------------------
+
+    /** Single output gate: patch-filtering, error/warning counting, gcc or GitHub format. */
+    private class Reporter(val github: Boolean, val repoRoot: Path, val patch: PatchFilter?) {
+        var errors = 0
+        var warnings = 0
+        var suppressed = 0
+
+        fun finding(path: String, line: Int, column: Int, severity: Severity, message: String) {
+            val label = when (severity) {
+                Severity.ERROR -> "error"
+                Severity.WARNING, Severity.WEAK_WARNING -> "warning"
+                Severity.INFO -> "info"
+            }
+            if (patch != null) {
+                val changed = patch.changedLinesFor(path)
+                if (changed == null || line !in changed) {
+                    if (label != "info") suppressed++
+                    return
+                }
+            }
+            when (label) {
+                "error" -> errors++
+                "warning" -> warnings++
+            }
+            emit(path, line, column, label, message)
+        }
+
+        /** Informational lines (plan/pending/preview): shown for patch-touched files only. */
+        fun info(path: String, line: Int, column: Int, message: String) {
+            if (patch != null && !patch.touches(path)) return
+            emit(path, line, column, "info", message)
+        }
+
+        fun note(message: String) {
+            if (github) println("::notice::${escape(message)}") else println(message)
+        }
+
+        private fun emit(path: String, line: Int, column: Int, label: String, message: String) {
+            if (github) {
+                val level = if (label == "info") "notice" else label
+                println("::$level file=${relative(path)},line=$line,col=$column::${escape(message)}")
+            } else {
+                println("$path:$line:$column: $label: $message")
+            }
+        }
+
+        private fun relative(path: String): String = try {
+            repoRoot.relativize(Paths.get(path)).toString().replace('\\', '/')
+        } catch (_: IllegalArgumentException) {
+            path.replace('\\', '/')
+        }
+
+        private fun escape(message: String): String =
+            message.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+    }
+
+    /** PowerShell's `>` redirect writes UTF-16LE with a BOM; decode patch files robustly. */
+    private fun decodeTextAuto(bytes: ByteArray): String = when {
+        bytes.size >= 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xFE.toByte() ->
+            String(bytes, 2, bytes.size - 2, Charsets.UTF_16LE)
+        bytes.size >= 2 && bytes[0] == 0xFE.toByte() && bytes[1] == 0xFF.toByte() ->
+            String(bytes, 2, bytes.size - 2, Charsets.UTF_16BE)
+        bytes.size >= 3 && bytes[0] == 0xEF.toByte() && bytes[1] == 0xBB.toByte() && bytes[2] == 0xBF.toByte() ->
+            String(bytes, 3, bytes.size - 3, Charsets.UTF_8)
+        else -> String(bytes, Charsets.UTF_8)
+    }
 
     private fun Array<String>.optionValue(name: String): String? =
         firstOrNull { it.startsWith("$name=") }?.substringAfter('=')

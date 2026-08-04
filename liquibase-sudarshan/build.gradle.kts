@@ -145,6 +145,19 @@ tasks {
         systemProperty("java.awt.headless", "true")
     }
 
+    // Standalone CLI fat-jar (used by the VS Code extension and CI): includes the core,
+    // the Kotlin stdlib and both JDBC drivers. Never part of the plugin ZIP.
+    register<Jar>("cliJar") {
+        group = "build"
+        description = "Build the standalone command-line validator jar"
+        archiveBaseName = "liquibase-sudarshan-cli"
+        manifest { attributes["Main-Class"] = "com.company.liquibasevalidator.cli.ValidatorCli" }
+        from(sourceSets.main.get().output)
+        from(cliRuntime.map { if (it.isDirectory) it else zipTree(it) })
+        duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+        exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA")
+    }
+
     // Command-line validation of a Liquibase repository (used by VS Code tasks / CI):
     //   gradlew validateRepo -Prepo="C:\path\to\repo" [-PrepoArgs="--oracle --country=SG"]
     register<JavaExec>("validateRepo") {

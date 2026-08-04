@@ -1,0 +1,42 @@
+# CI: build + test the plugin, then validate the Liquibase repositories.
+# On pull requests, findings surface as INLINE ANNOTATIONS on the changed files
+# (the CLI's --github flag emits GitHub workflow commands) — so a broken changeset
+# is visible in the first PR review round instead of a trial-and-error PR loop.
+name: liquibase-validate
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  build-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build and test the plugin
+        working-directory: liquibase-sudarshan
+        run: ./gradlew test --console=plain
+
+      - name: Validate the PostgreSQL sample repository (valid subset must stay clean)
+        working-directory: liquibase-sudarshan
+        run: |
+          ./gradlew validateRepo --console=plain --quiet \
+            -Prepo="$GITHUB_WORKSPACE/liquibase-sudarshan/sample-repository" \
+            -PrepoArgs="--country=IN --github"
+
+      - name: Validate the Oracle test repository (annotations only, never fails CI)
+        if: always()
+        working-directory: liquibase-sudarshan
+        run: |
+          ./gradlew validateRepo --console=plain --quiet -PrepoIgnoreExit=true \
+            -Prepo="$GITHUB_WORKSPACE/oracle-liquibase-testrepo" \
+            -PrepoArgs="--oracle --github" || true
