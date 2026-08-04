@@ -90,6 +90,16 @@ intellijPlatform {
             pre-commit and pre-push validation, a repository-wide validation report, and an
             optional read-only database dry run (pending changesets, precondition checks, foreign
             keys) for PostgreSQL and Oracle. No SQL is ever executed during validation.
+            <br/><br/>
+            <b>Release execution simulation (Simulate Release…):</b> validates the exact ordered
+            country/environment run your CI/CD pipeline (e.g. Jenkins) would execute — global DDL,
+            static datasets, country datasets, update scripts, then environment-specific SQL —
+            with sequential schema build-up (tables or foreign-key targets used before their DDL
+            runs), cross-file checks (duplicate changeset ids, unique-key collisions) and
+            per-environment policy guardrails (destructive SQL approval markers, PROD rollback
+            requirements). One optional .liquibase-sudarshan.yml configures the IDE, the bundled
+            headless CLI and your pipeline identically, so a release that passes validation does
+            not fail in SIT/UAT/PROD.
         """.trimIndent()
         ideaVersion {
             // Floor: 2023.2 (build 232), Community and Ultimate (JVM 17 bytecode,
