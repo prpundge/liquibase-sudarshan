@@ -1,0 +1,26 @@
+# Liquibase Sudarshan release configuration (all values shown are the defaults —
+# uncomment and change only what differs in your repository).
+# Read by the IDE "Simulate Release" action, the CLI --simulate mode and Jenkins,
+# so all three always agree on the execution order and the policies.
+
+# Directory layout (stages run in this order):
+#globalDdl: database/global/ddl
+#globalStatic: database/global/staticdatasetup
+#countryRoot: database/countries
+#countryStaticSub: staticdatasetup
+#globalUpdate: database/global/update
+#countryUpdateSub: update
+#environmentsRoot: database/environments
+
+# Deployable non-production environments (comma separated) and the PROD name.
+# PROD never receives environment-specific SQL.
+#environments: SIT, UAT
+#prodName: PROD
+
+# Policy severities: error | warning | info | off
+#policy.prod.destructive: error
+#policy.prod.missingRollback: error
+#policy.prod.failOnErrorFalse: warning
+#policy.nonprod.destructive: warning
+#policy.nonprod.missingRollback: warning
+#policy.runAlwaysDml: warning

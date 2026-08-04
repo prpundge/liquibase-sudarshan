@@ -67,6 +67,12 @@ object ValidatorCli {
         }
         val reporter = Reporter(github = args.contains("--github"), repoRoot = root, patch = patch)
 
+        // Release simulation mode: validate the exact ordered (country, environment) run.
+        if (args.contains("--simulate")) {
+            runSimulation(root, args, reporter, options, failOnWarnings)
+            return
+        }
+
         val ddlDirs = args.optionValues("--ddl").map { root.resolve(it) }.ifEmpty { detectDdlDirs(root) }
         val dataDirs = args.optionValues("--data").map { root.resolve(it) }.ifEmpty { detectDataDirs(root, country) }
 
@@ -163,6 +169,83 @@ object ValidatorCli {
         println(
             "Liquibase Sudarshan: ${files.size} file(s) scanned, " +
                 "${reporter.errors} error(s), ${reporter.warnings} warning(s)",
+        )
+        if (reporter.errors > 0 || (failOnWarnings && reporter.warnings > 0)) kotlin.system.exitProcess(1)
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Release simulation (requirements 0.1.0): the Jenkins gate.
+    // ---------------------------------------------------------------------------------------
+
+    private fun runSimulation(
+        root: Path,
+        args: Array<String>,
+        reporter: Reporter,
+        options: com.company.liquibasevalidator.validation.ValidationOptions,
+        failOnWarnings: Boolean,
+    ) {
+        val country = args.optionValue("--country")
+        val environment = args.optionValue("--env")
+        if (country.isNullOrBlank() || environment.isNullOrBlank()) {
+            System.err.println("error: --simulate requires --country=<CC> and --env=<SIT|UAT|PROD>")
+            kotlin.system.exitProcess(2)
+        }
+
+        val loaded = com.company.liquibasevalidator.release.ReleaseConfigLoader.load(root)
+        loaded.warnings.forEach { System.err.println("warning: $it") }
+        if (loaded.fromFile) reporter.note("configuration: ${com.company.liquibasevalidator.release.ReleaseConfigLoader.FILE_NAME}")
+
+        // seed the accumulating schema from the live database when a datasource is given
+        val dbUrl = args.optionValue("--db-url")
+        val baseSchema = if (!dbUrl.isNullOrBlank()) {
+            val config = DatabaseConfig(
+                jdbcUrl = dbUrl,
+                user = args.optionValue("--db-user").orEmpty(),
+                password = args.optionValue("--db-password")
+                    ?: System.getenv("LIQUIBASE_SUDARSHAN_DB_PASSWORD").orEmpty(),
+                schemaName = args.optionValue("--db-schema").orEmpty(),
+                driverJarPath = args.optionValue("--db-driver-jar").orEmpty(),
+            )
+            try {
+                JdbcConnector(config).withSession { it.fetchTables() }
+            } catch (e: Exception) {
+                System.err.println("error: cannot read live schema for simulation: ${e.message}")
+                kotlin.system.exitProcess(2)
+            }
+        } else {
+            emptyMap()
+        }
+
+        val result = com.company.liquibasevalidator.release.ReleaseSimulator(options, loaded.config)
+            .simulate(root, country, environment, baseSchema)
+
+        reporter.note(
+            "=== Release simulation: country=$country env=$environment — " +
+                "${result.manifest.size} file(s) in execution order ===",
+        )
+        for (report in result.reports) {
+            reporter.info(
+                report.entry.path.toAbsolutePath().toString(), 1, 1,
+                "manifest ${report.entry.order}. [${report.entry.stage.display}] " +
+                    "${report.entry.path.fileName} — ${report.changesetCount} changeset(s)",
+            )
+        }
+        for (report in result.reports) {
+            val lineIndex = LineIndex(report.text)
+            for (problem in report.problems) {
+                val (line, column) = lineIndex.locate(problem.range.start)
+                reporter.finding(
+                    report.entry.path.toAbsolutePath().toString(), line, column,
+                    problem.severity, problem.message,
+                )
+            }
+        }
+
+        println()
+        println(
+            "Liquibase Sudarshan simulation [$country/$environment]: ${result.manifest.size} file(s), " +
+                "${reporter.errors} error(s), ${reporter.warnings} warning(s) — " +
+                (if (reporter.errors == 0) "release would EXECUTE" else "release would FAIL"),
         )
         if (reporter.errors > 0 || (failOnWarnings && reporter.warnings > 0)) kotlin.system.exitProcess(1)
     }

@@ -194,6 +194,12 @@ private class ReportPanel(private val project: Project) : JPanel(BorderLayout())
         if (warnings.childCount > 0) root.add(warnings)
         if (infos.childCount > 0) root.add(infos)
 
+        if (report.manifest.isNotEmpty()) {
+            val manifestRoot = DefaultMutableTreeNode("Release manifest — execution order (${report.manifest.size} files)")
+            report.manifest.forEach { manifestRoot.add(PreviewNode(it)) }
+            root.add(manifestRoot)
+        }
+
         if (report.plan.isNotEmpty()) {
             val planRoot = DefaultMutableTreeNode("Execution plan — dry run (${report.plan.size} changesets)")
             report.plan.forEach { planRoot.add(PreviewNode(it)) }

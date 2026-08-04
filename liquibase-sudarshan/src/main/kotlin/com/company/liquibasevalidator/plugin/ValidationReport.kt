@@ -36,6 +36,8 @@ data class ValidationReport(
     val previews: List<PreviewItem> = emptyList(),
     /** Simulated liquibase-update execution order (dry run). */
     val plan: List<PreviewItem> = emptyList(),
+    /** Release manifest (Simulate Release action): the exact ordered Jenkins run. */
+    val manifest: List<PreviewItem> = emptyList(),
 ) {
     val errorCount: Int get() = items.count { it.severity == Severity.ERROR }
     val warningCount: Int get() =

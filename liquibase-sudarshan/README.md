@@ -188,6 +188,44 @@ The read-only database dry run also runs headless when a datasource is passed:
 live precondition checks, FK/PK probes and `preview: INSERT|UPDATE|CONFLICT …` lines.
 See the Oracle test repo's README for a one-command free Oracle 23ai Docker datasource.
 
+## Release simulation — the Jenkins gate (0.1.0)
+
+A release that passes validation must not fail when Jenkins executes it in SIT/UAT/PROD.
+`--simulate` validates the **exact ordered run** for one country and one environment:
+
+```bash
+./gradlew validateRepo -Prepo="C:\path\to\repo" \
+    -PrepoArgs="--oracle --simulate --country=IN --env=SIT"
+```
+
+Stages execute in the confirmed order — (1) `database/global/ddl`, (2) `global/staticdatasetup`,
+(3) `countries/<CC>/staticdatasetup`, (4) `global/update`, (5) `countries/<CC>/update`,
+(6) `environments/<ENV>` (+ optional `…/countries/<CC>`) — files within a stage sorted with
+numeric prefixes first (`001_`, `002_`, …), exactly like the Jenkins job. PROD **never**
+receives stage 6. On top of every existing per-file check, the simulator adds:
+
+- **Sequential schema accumulation** — each file sees only tables that *earlier* files
+  created: a table (or FOREIGN KEY target) used before its DDL runs, a table defined
+  twice, or an ALTER before the CREATE is an error naming the offending step.
+- **Cross-file checks** — duplicate changeset `author:id` across the release and
+  cross-file unique-key INSERT collisions are errors; a country MERGE overriding a
+  global row is an info.
+- **Environment policies** (configurable severities) — destructive SQL (`DROP` non-staging,
+  `TRUNCATE`, `DELETE`/`UPDATE` without `WHERE`) errors in PROD and warns in SIT/UAT unless
+  the changeset carries `--approved-destructive <ticket>`; missing rollbacks error in PROD;
+  `failOnError:false` and `runAlways:true` on DML warn.
+
+Everything is configurable through a single optional `.liquibase-sudarshan.yml` at the
+repository root (directories, environment names, PROD name, policy severities) — the IDE,
+the CLI and Jenkins read the same file. A commented sample lives in the
+[Oracle test repo](../oracle-liquibase-testrepo/.liquibase-sudarshan.yml), and
+[jenkins/Jenkinsfile.validate](../jenkins/Jenkinsfile.validate) is a copy-paste pipeline
+template that runs the simulation as a gate **before** `liquibase update`. In the IDE the
+same engine powers **Tools | Liquibase Sudarshan | Simulate Release…** (country +
+environment pickers, manifest and findings in the tool window). `--db-url` composes to
+seed the simulation with the live schema, read-only as always; `--github`, `--patch` and
+`--fail-on-warnings` compose too.
+
 ## Building and running
 
 Requirements: JDK 21 (Gradle toolchain), internet access for the first build.
@@ -236,13 +274,16 @@ automatically before publishing.
 Open the [sample-repository](sample-repository/) folder as a project (or point the settings
 at it). It contains:
 
-- `database/global/ddl/` — `account_type`, `customer_type`, `account` definitions
+- `database/global/ddl/` — `001_account_type`, `002_customer_type`, `003_account`
+  definitions (numeric prefixes = release execution order, FK-correct)
 - `database/global/staticdatasetup/account_type.sql` — a fully **valid** staging+MERGE script
 - `database/countries/IN/.../account_type.sql` — a valid country dataset
 - `database/countries/SG/.../account_type.sql` — **intentionally broken**: oversized staging
   types, oversized value, NULL into NOT NULL, duplicate primary keys, unused staging column
 - `database/countries/US/.../customer_type.sql` — **intentionally broken**: SMALLINT
   overflow, invalid UUID, INTEGER overflow, unknown column
+- `database/global/update/` and `database/environments/SIT|UAT/` — valid release stages 4
+  and 6, so `--simulate --country=IN --env=SIT` runs green end to end
 
 With default settings (`database/global/ddl` etc.) the SG and US files light up with the
 errors described in their comments; the global and IN files stay clean.

@@ -10,7 +10,9 @@ Validation tooling for Liquibase SQL repositories — catch schema, datatype, an
 | [oracle-liquibase-testrepo/](oracle-liquibase-testrepo/) | Oracle test repository: global DDL + country datasets, documented expected findings, VS Code tasks, free Oracle 23ai Docker datasource instructions |
 | [vscode-liquibase-sudarshan/](vscode-liquibase-sudarshan/) | VS Code extension (1.60+ — years of versions): inline squiggles + Problems panel via the standalone CLI jar (`gradlew cliJar`), runs on save, dry-run capable; ships as a 6 KB `.vsix` |
 | [specs/0.0.1/](specs/0.0.1/) | Spec-kit documentation for v0.0.1: [spec.md](specs/0.0.1/spec.md) (all features + acceptance criteria), [plan.md](specs/0.0.1/plan.md) (architecture), [tasks.md](specs/0.0.1/tasks.md) (delivery checklist + multi-IDE roadmap), [publishing.md](specs/0.0.1/publishing.md) (Marketplace release steps) |
-| [.github/workflows/](.github/workflows/) | CI: build + tests + repository validation with **inline PR annotations** (`--github`); combine with `--patch=pr.diff` for changed-lines-only PR review |
+| [specs/0.1.0/](specs/0.1.0/) | v0.1.0 **release execution simulation**: [requirements.md](specs/0.1.0/requirements.md) (DBA-view requirements — a release that passes validation must not fail when Jenkins runs it in SIT/UAT/PROD) and [tasks.md](specs/0.1.0/tasks.md) (delivery status) |
+| [jenkins/](jenkins/) | `Jenkinsfile.validate` — pipeline template running `--simulate --country=CC --env=ENV` as a gate **before** `liquibase update` |
+| [.github/workflows/](.github/workflows/) | CI: build + tests + repository validation with **inline PR annotations** (`--github`); combine with `--patch=pr.diff` for changed-lines-only PR review; release simulation jobs for both sample repos |
 
 Quick start:
 

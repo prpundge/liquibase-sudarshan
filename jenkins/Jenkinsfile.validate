@@ -1,0 +1,71 @@
+// Liquibase Sudarshan — Jenkins release gate (template).
+//
+// Copy this stage block into the pipeline that runs `liquibase update`, BEFORE the
+// update stage. It simulates the exact (country, environment) release the pipeline
+// is about to execute — same directories, same file order, same policies — and fails
+// fast on anything that would abort the real run: tables used before their DDL runs,
+// duplicate changeset ids, unique-key collisions across files, unapproved destructive
+// SQL, missing rollbacks. Nothing is executed against the database; with --db-url the
+// live schema seeds the simulation READ-ONLY.
+//
+// The CLI jar is built once from the plugin repository:
+//     ./gradlew cliJar        ->  build/libs/liquibase-sudarshan-cli-<version>.jar
+// and archived wherever your pipelines fetch tools from (Artifactory, S3, a tools/ dir).
+
+pipeline {
+    agent any
+
+    parameters {
+        choice(name: 'COUNTRY',     choices: ['IN', 'SG', 'US'],          description: 'Country release to deploy')
+        choice(name: 'ENVIRONMENT', choices: ['SIT', 'UAT', 'PROD'],      description: 'Target environment')
+    }
+
+    environment {
+        SUDARSHAN_CLI = 'tools/liquibase-sudarshan-cli.jar'
+        // Optional read-only datasource: seeds the simulation with the real schema.
+        // Credentials come from the Jenkins store — never hardcode them here.
+        // DB_URL  = 'jdbc:oracle:thin:@//db-host:1521/SERVICE'
+    }
+
+    stages {
+
+        stage('Simulate release') {
+            steps {
+                // Exit codes: 0 = release would execute, 1 = release would fail,
+                // 2 = bad invocation. Findings print as gcc-style file:line:col lines.
+                sh """
+                    java -jar "${SUDARSHAN_CLI}" . --simulate --oracle \\
+                        --country=${params.COUNTRY} --env=${params.ENVIRONMENT}
+                """
+                // With a read-only datasource (recommended for UAT/PROD gates):
+                // withCredentials([usernamePassword(credentialsId: 'db-readonly',
+                //         usernameVariable: 'DB_USER', passwordVariable: 'LIQUIBASE_SUDARSHAN_DB_PASSWORD')]) {
+                //     sh """
+                //         java -jar "${SUDARSHAN_CLI}" . --simulate --oracle \\
+                //             --country=${params.COUNTRY} --env=${params.ENVIRONMENT} \\
+                //             --db-url=${env.DB_URL} --db-user=${DB_USER}
+                //     """
+                // }
+            }
+        }
+
+        stage('Liquibase update') {
+            // Runs ONLY if the simulation passed — the release cannot fail in the DB
+            // for anything the simulator checks.
+            steps {
+                sh """
+                    liquibase update \\
+                        --contexts=${params.COUNTRY},${params.ENVIRONMENT} \\
+                        --changelog-file=changelog/changelog-master.xml
+                """
+            }
+        }
+    }
+
+    post {
+        failure {
+            echo 'Release blocked by Liquibase Sudarshan — fix the findings above and re-run. ' +
+                 'No partial release reached the database.'
+        }
+    }
+}

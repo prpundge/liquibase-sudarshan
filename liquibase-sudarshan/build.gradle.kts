@@ -9,7 +9,7 @@ plugins {
 }
 
 group = "com.company.liquibasevalidator"
-version = "0.0.2"
+version = "0.1.0"
 
 repositories {
     mavenCentral()
@@ -56,6 +56,15 @@ intellijPlatform {
         name = "Liquibase Sudarshan - SQL & Data Validator"
         version = project.version.toString()
         changeNotes = """
+            <b>0.1.0</b> — Release execution simulation: <i>Tools | Liquibase Sudarshan |
+            Simulate Release…</i> (and CLI <code>--simulate --country=CC --env=ENV</code>)
+            validates the exact ordered country/environment run Jenkins would execute —
+            sequential schema build-up (tables or FK targets used before their DDL runs,
+            duplicate definitions), cross-file checks (duplicate changeset ids, unique-key
+            collisions), and per-environment policy guardrails (destructive SQL needs an
+            <code>--approved-destructive &lt;ticket&gt;</code> marker, PROD requires rollbacks,
+            PROD never gets environment SQL). Configurable via a repository-root
+            <code>.liquibase-sudarshan.yml</code>; ships a Jenkinsfile gate template.<br/>
             <b>0.0.2</b> — Performance and size release: plugin download is ~20x smaller
             (JDBC drivers are no longer bundled — they load from the classpath, a custom JAR,
             or a one-click SHA-256-verified download from Maven Central); per-file validation

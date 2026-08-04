@@ -5,10 +5,10 @@
     xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
                         http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
 
-    <!-- Global DDL -->
-    <include file="../database/global/ddl/account_type.sql" relativeToChangelogFile="true"/>
-    <include file="../database/global/ddl/customer_type.sql" relativeToChangelogFile="true"/>
-    <include file="../database/global/ddl/account.sql" relativeToChangelogFile="true"/>
+    <!-- Global DDL — numeric prefixes match the Jenkins per-directory execution order -->
+    <include file="../database/global/ddl/001_account_type.sql" relativeToChangelogFile="true"/>
+    <include file="../database/global/ddl/002_customer_type.sql" relativeToChangelogFile="true"/>
+    <include file="../database/global/ddl/003_account.sql" relativeToChangelogFile="true"/>
 
     <!-- Global static datasets -->
     <include file="../database/global/staticdatasetup/account_type.sql" relativeToChangelogFile="true"/>

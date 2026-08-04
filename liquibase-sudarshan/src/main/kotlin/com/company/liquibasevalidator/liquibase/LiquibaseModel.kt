@@ -12,6 +12,8 @@ data class Changeset(
     val comment: String?,
     val preconditions: Preconditions?,
     val rollbacks: List<RollbackSql>,
+    /** Ticket from an `--approved-destructive <ticket>` marker inside the changeset. */
+    val approvedDestructive: String?,
     /** Range of the `--changeset` header line. */
     val headerRange: SrcRange,
     /** Range of the SQL body: from end of header to start of the next changeset (or EOF). */

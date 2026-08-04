@@ -175,8 +175,34 @@ data class CreateIndexStatement(
 data class DeleteStatement(
     val tableName: String,
     val tableNameRange: SrcRange,
+    val hasWhere: Boolean,
     override val range: SrcRange,
 ) : SqlStatement()
+
+data class UpdateStatement(
+    val tableName: String,
+    val tableNameRange: SrcRange,
+    val hasWhere: Boolean,
+    override val range: SrcRange,
+) : SqlStatement() {
+    val tableNameLower: String get() = tableName.lowercase()
+}
+
+data class TruncateStatement(
+    val tableName: String,
+    val tableNameRange: SrcRange,
+    override val range: SrcRange,
+) : SqlStatement()
+
+data class DropStatement(
+    /** TABLE, SEQUENCE, INDEX or VIEW. */
+    val objectKind: String,
+    val name: String,
+    val nameRange: SrcRange,
+    override val range: SrcRange,
+) : SqlStatement() {
+    val nameLower: String get() = name.lowercase()
+}
 
 /** A parsed script: ordered statements plus non-fatal parse notes. */
 data class SqlScript(

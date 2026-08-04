@@ -74,7 +74,7 @@ object DdlSchemaBuilder {
         )
     }
 
-    private fun toConstraintSchema(def: TableConstraintDef): ConstraintSchema? = when (def.kind) {
+    fun toConstraintSchema(def: TableConstraintDef): ConstraintSchema? = when (def.kind) {
         TableConstraintKind.PRIMARY_KEY -> ConstraintSchema(ConstraintKind.PRIMARY_KEY, def.name, def.columns)
         TableConstraintKind.UNIQUE -> ConstraintSchema(ConstraintKind.UNIQUE, def.name, def.columns)
         TableConstraintKind.FOREIGN_KEY ->

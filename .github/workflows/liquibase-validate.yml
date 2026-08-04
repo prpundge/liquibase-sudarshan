@@ -40,3 +40,20 @@ jobs:
           ./gradlew validateRepo --console=plain --quiet -PrepoIgnoreExit=true \
             -Prepo="$GITHUB_WORKSPACE/oracle-liquibase-testrepo" \
             -PrepoArgs="--oracle --github" || true
+
+      # Release simulation: the exact ordered IN/SIT run Jenkins would execute —
+      # sequential schema build-up, cross-file checks, environment policies.
+      - name: Simulate the IN/SIT release (PostgreSQL sample, must stay green)
+        working-directory: liquibase-sudarshan
+        run: |
+          ./gradlew validateRepo --console=plain --quiet \
+            -Prepo="$GITHUB_WORKSPACE/liquibase-sudarshan/sample-repository" \
+            -PrepoArgs="--simulate --country=IN --env=SIT --github"
+
+      - name: Simulate the IN/SIT release (Oracle repo, annotations only)
+        if: always()
+        working-directory: liquibase-sudarshan
+        run: |
+          ./gradlew validateRepo --console=plain --quiet -PrepoIgnoreExit=true \
+            -Prepo="$GITHUB_WORKSPACE/oracle-liquibase-testrepo" \
+            -PrepoArgs="--oracle --simulate --country=IN --env=SIT --github" || true

@@ -16,7 +16,7 @@ object LiquibaseParser {
 
     private val DIRECTIVES = listOf(
         "changeset", "rollback", "comment", "preconditions", "precondition-sql-check",
-        "liquibase", "validCheckSum", "ignoreLines", "property",
+        "liquibase", "validCheckSum", "ignoreLines", "property", "approved-destructive",
     )
 
     /** Directives whose loss changes execution semantics: typo = ERROR, not warning. */
@@ -104,6 +104,9 @@ object LiquibaseParser {
                     lower.startsWith("comment") -> {
                         val rest = content.substring("comment".length).removePrefix(":").trim()
                         current?.setComment(rest)
+                    }
+                    lower.startsWith("approved-destructive") -> {
+                        current?.setApprovedDestructive(content.substring("approved-destructive".length).trim())
                     }
                     lower.startsWith("validchecksum") || lower.startsWith("ignorelines") ||
                         lower.startsWith("property") -> { /* recognized directives, no model impact */ }
@@ -341,6 +344,7 @@ object LiquibaseParser {
         val headerRange: SrcRange,
     ) {
         private var comment: String? = null
+        private var approvedDestructive: String? = null
         private var preconditionAttrs: Map<String, String>? = null
         private var preconditionRange: SrcRange? = null
         private val sqlChecks = mutableListOf<SqlCheck>()
@@ -350,6 +354,8 @@ object LiquibaseParser {
             private set
 
         fun setComment(value: String) { comment = value }
+
+        fun setApprovedDestructive(ticket: String) { approvedDestructive = ticket.ifBlank { "(no ticket)" } }
 
         fun setPreconditions(attrs: Map<String, String>, range: SrcRange) {
             preconditionAttrs = attrs
@@ -410,6 +416,7 @@ object LiquibaseParser {
                 comment = comment,
                 preconditions = preconditions,
                 rollbacks = rollbacks.toList(),
+                approvedDestructive = approvedDestructive,
                 headerRange = headerRange,
                 bodyRange = SrcRange(headerRange.end, maxOf(bodyEnd, headerRange.end)),
             )

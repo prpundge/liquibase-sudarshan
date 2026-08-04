@@ -147,6 +147,9 @@ class SqlParser private constructor(private val text: String) {
             first.isKeyword("MERGE") -> parseMerge()
             first.isKeyword("ALTER") -> parseAlter()
             first.isKeyword("DELETE") -> parseDelete()
+            first.isKeyword("UPDATE") -> parseUpdate()
+            first.isKeyword("TRUNCATE") -> parseTruncate()
+            first.isKeyword("DROP") -> parseDrop()
             else -> unknownStatement(first)
         }
     }
@@ -442,8 +445,56 @@ class SqlParser private constructor(private val text: String) {
         val first = advance() // DELETE
         if (accept("FROM") == null) return unknownStatement(first)
         val name = parseQualifiedName() ?: return unknownStatement(first)
+        val hasWhere = scanForWhere()
         val range = skipToStatementEnd(first)
-        return DeleteStatement(name.first, name.second, range)
+        return DeleteStatement(name.first, name.second, hasWhere, range)
+    }
+
+    private fun parseUpdate(): SqlStatement {
+        val first = advance() // UPDATE
+        val name = parseQualifiedName() ?: return unknownStatement(first)
+        if (isNameToken(peek()) && !peek().isKeyword("SET")) advance() // optional alias
+        if (!peek().isKeyword("SET")) return unknownStatement(first)
+        val hasWhere = scanForWhere()
+        val range = skipToStatementEnd(first)
+        return UpdateStatement(name.first, name.second, hasWhere, range)
+    }
+
+    private fun parseTruncate(): SqlStatement {
+        val first = advance() // TRUNCATE
+        accept("TABLE") // required in Oracle, optional in PostgreSQL
+        val name = parseQualifiedName() ?: return unknownStatement(first)
+        val range = skipToStatementEnd(first)
+        return TruncateStatement(name.first, name.second, range)
+    }
+
+    private fun parseDrop(): SqlStatement {
+        val first = advance() // DROP
+        val kind = peek().takeIf { it.isKeyword("TABLE", "SEQUENCE", "INDEX", "VIEW") }
+            ?: return unknownStatement(first)
+        advance()
+        if (peek().isKeyword("IF") && peek(1).isKeyword("EXISTS")) { advance(); advance() }
+        val name = parseQualifiedName() ?: return unknownStatement(first)
+        val range = skipToStatementEnd(first) // CASCADE / PURGE tails
+        return DropStatement(kind.upper, name.first, name.second, range)
+    }
+
+    /** Peeks ahead (without consuming) for a top-level WHERE before the statement ends. */
+    private fun scanForWhere(): Boolean {
+        var i = pos
+        var depth = 0
+        while (i < tokens.size) {
+            val t = tokens[i]
+            when {
+                t.type == SqlTokenType.SEMICOLON && depth == 0 -> return false
+                t.type == SqlTokenType.LPAREN -> depth++
+                t.type == SqlTokenType.RPAREN -> if (depth > 0) depth-- else return false
+                depth == 0 && t.isKeyword("WHERE") -> return true
+                depth == 0 && t.type == SqlTokenType.EOF -> return false
+            }
+            i++
+        }
+        return false
     }
 
     // -----------------------------------------------------------------------------------------

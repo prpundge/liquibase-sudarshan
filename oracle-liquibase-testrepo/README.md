@@ -9,19 +9,43 @@ Y/N flags, `CREATE GLOBAL TEMPORARY TABLE … ON COMMIT DELETE ROWS`, parenthesi
 ```text
 changelog/changelog-master.xml       Liquibase master changelog (includes all files below)
 liquibase.properties                 Oracle JDBC settings (only needed for real `liquibase update`)
+.liquibase-sudarshan.yml             Release-simulation config (commented defaults)
 database/
 ├── global/
-│   ├── ddl/                         account_type, customer_type (+sequence), account
-│   └── staticdatasetup/             VALID upserts (GTT + MERGE, SYSDATE, seq.NEXTVAL)
-└── countries/
-    ├── IN/staticdatasetup/          VALID country dataset
-    ├── SG/staticdatasetup/          INTENTIONALLY BROKEN (lengths, NULL, duplicates — E1–E7 + W1)
-    └── US/staticdatasetup/          INTENTIONALLY BROKEN (NUMBER precision/scale, MERGE mapping,
-                                     missing NOT NULL column, bad TIMESTAMP, duplicate changeset — E1–E10 + W2)
+│   ├── ddl/                         001_account_type, 002_customer_type, 003_account
+│   │                                (numeric prefixes = release execution order, FK-correct)
+│   ├── staticdatasetup/             VALID upserts (GTT + MERGE, SYSDATE, seq.NEXTVAL)
+│   └── update/                      release stage 4: 001 = VALID corrective UPDATE,
+│                                    002 = INTENTIONAL policy fixtures (see below)
+├── countries/
+│   ├── IN/staticdatasetup/          VALID country dataset
+│   ├── SG/staticdatasetup/          INTENTIONALLY BROKEN (lengths, NULL, duplicates — E1–E7 + W1)
+│   └── US/staticdatasetup/          INTENTIONALLY BROKEN (NUMBER precision/scale, MERGE mapping,
+│                                    missing NOT NULL column, bad TIMESTAMP, duplicate changeset — E1–E10 + W2)
+└── environments/
+    ├── SIT/                         release stage 6: SIT-only seed data (never runs in PROD)
+    └── UAT/                         release stage 6: UAT-only seed data (never runs in PROD)
 ```
 
 The valid files must produce **zero findings**; every expected finding in the broken files is
 documented at the top of the file (`E1…`, `W…`).
+
+### Release simulation (v0.1.0)
+
+`--simulate` validates the exact ordered run Jenkins would execute for one country and
+environment (stages: global ddl → global static → country static → global update →
+country update → environment SQL, PROD excluded from the last stage):
+
+```bash
+cd ../liquibase-sudarshan
+./gradlew validateRepo -Prepo="../oracle-liquibase-testrepo" \
+    -PrepoArgs="--oracle --simulate --country=IN --env=SIT"    # then try --env=PROD
+```
+
+`database/global/update/002_policy_fixtures.sql` demonstrates the environment policies:
+its unapproved `UPDATE` without `WHERE` **warns** for SIT but **errors** for PROD, while
+the `DROP TABLE` carrying `--approved-destructive DB-1234` is reported as info in both.
+In the IDE the same run is **Tools | Liquibase Sudarshan | Simulate Release…**.
 
 > **Prerequisite:** this folder must sit **next to the `liquibase-sudarshan` checkout** — the VS
 > Code tasks and the commands below call `../liquibase-sudarshan/gradlew`. If it lives elsewhere,
@@ -88,8 +112,8 @@ docker logs -f liquibase-sudarshan-oracle   # wait for "DATABASE IS READY TO USE
 Apply this repo's DDL and seed a row (so the preview shows both UPDATE and INSERT):
 
 ```powershell
-Get-Content database\global\ddl\account_type.sql, database\global\ddl\customer_type.sql, `
-    database\global\ddl\account.sql -Raw |
+Get-Content database\global\ddl\001_account_type.sql, database\global\ddl\002_customer_type.sql, `
+    database\global\ddl\003_account.sql -Raw |
     docker exec -i liquibase-sudarshan-oracle sqlplus -s app_user/app_pass@localhost/FREEPDB1
 "INSERT INTO account_type (code, name, description, active_flag) VALUES ('SAVINGS','Old','seed','Y');
 COMMIT;

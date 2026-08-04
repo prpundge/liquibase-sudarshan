@@ -24,11 +24,11 @@ failing statement aborts the run and leaves the release half-applied. Stages:
 Within a stage, files execute in **deterministic name order**: numeric prefix first
 (`001_`, `010_`…), then case-insensitive alphabetical — this MUST match the Jenkins sort.
 
-**ASSUMPTIONS TO CONFIRM** (defaults chosen; all configurable):
-- A1: the corrective-DML folders are named `update/` (global and per-country).
-- A2: environment folders are `database/environments/SIT/`, `…/UAT/`; PROD has no folder.
-- A3: Jenkins orders files alphabetically (numeric prefixes respected numerically).
-- A4: Jenkins runs each file as a Liquibase formatted-SQL changelog (not raw sqlplus/psql).
+**ASSUMPTIONS — RESOLVED** (2026-08-03, all configurable via `.liquibase-sudarshan.yml`):
+- A1: ✅ **CONFIRMED by user** — corrective-DML folders are named `update/` (global and per-country).
+- A2: ✅ **CONFIRMED by user** — environment folders are `database/environments/SIT/`, `…/UAT/`; PROD has no folder.
+- A3: ⚙ default accepted — files order alphabetically, numeric prefixes compared numerically (`SqlFileOrder`).
+- A4: ⚙ default accepted — each file is a Liquibase formatted-SQL changelog; PROD never receives stage-6 SQL.
 
 ## 2. Functional requirements
 

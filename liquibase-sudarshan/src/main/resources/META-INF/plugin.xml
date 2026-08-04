@@ -92,11 +92,17 @@
                 class="com.company.liquibasevalidator.plugin.ValidateLiquibaseRepositoryAction"
                 text="Validate Liquibase Repository"
                 description="Validate all configured Liquibase repository directories and show a report"/>
+            <action
+                id="LiquibaseSudarshan.SimulateRelease"
+                class="com.company.liquibasevalidator.plugin.SimulateReleaseAction"
+                text="Simulate Release…"
+                description="Validate the exact ordered country/environment execution Jenkins would run - sequential schema build-up, cross-file checks and environment policies"/>
             <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
         </group>
         <group id="LiquibaseSudarshan.ToolsMenu" text="Liquibase Sudarshan" popup="true">
             <reference ref="LiquibaseSudarshan.ValidateRepository"/>
+            <reference ref="LiquibaseSudarshan.SimulateRelease"/>
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </group>
     </actions>
