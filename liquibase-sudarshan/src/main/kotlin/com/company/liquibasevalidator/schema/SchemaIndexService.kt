@@ -109,9 +109,10 @@ class SchemaIndexService(private val project: Project) : Disposable {
                 if (ddlDir == null) {
                     Snapshot(key, tables = null, resolvedDirs = false)
                 } else {
+                    // fileId = VFS URL so navigation (Ctrl+Click, hover docs) can resolve it
                     val sources = ProjectPaths.sqlFilesUnder(ddlDir).mapNotNull { file ->
                         try {
-                            DdlSchemaBuilder.DdlSource(file.path, VfsUtilCore.loadText(file))
+                            DdlSchemaBuilder.DdlSource(file.url, VfsUtilCore.loadText(file))
                         } catch (e: Exception) {
                             log.warn("Cannot read DDL file ${file.path}", e)
                             null

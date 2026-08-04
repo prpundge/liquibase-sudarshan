@@ -161,6 +161,12 @@ internal object ValidationRunner {
                             summary,
                             if (report.errorCount > 0) NotificationType.ERROR else NotificationType.INFORMATION,
                         )
+                        .addAction(
+                            com.intellij.notification.NotificationAction.createSimple("Show Report") {
+                                ToolWindowManager.getInstance(project)
+                                    .getToolWindow("Liquibase Validation")?.activate(null)
+                            },
+                        )
                         .notify(project)
                 }
             }

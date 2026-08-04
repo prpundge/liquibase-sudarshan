@@ -1,0 +1,7 @@
+<idea-plugin>
+    <extensions defaultExtensionNs="com.intellij">
+        <codeInsight.lineMarkerProvider
+            language="SQL"
+            implementationClass="com.company.liquibasevalidator.plugin.navigation.ChangesetLineMarkerProvider"/>
+    </extensions>
+</idea-plugin>

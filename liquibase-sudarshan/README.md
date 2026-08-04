@@ -96,6 +96,24 @@ never flagged just because metadata is unavailable.
     Every query is a SELECT on a server-enforced READ ONLY transaction; the grid is
     non-editable — there is no write path anywhere.
 
+## Interactive editor features
+
+- **Ctrl+Click a table name** → jumps to its `CREATE TABLE` (repository DDL, or the staging
+  definition in the same file).
+- **Hover / Ctrl+Q a table name** → quick-doc popup with the full schema: columns, types,
+  NOT NULL/PK/UNIQUE/DEFAULT flags and foreign keys, plus whether it came from the
+  repository DDL or the live database.
+- **Changeset gutter icons** — a chakra marker on every `--changeset` header; the tooltip
+  shows id, contexts, labels, runOnChange and **rollback coverage** (calls out
+  `rollback: MISSING`); click jumps to the rollback.
+- **Alt+Enter → "Generate rollback from inserted data"** — on a changeset without a
+  rollback, writes `--rollback DELETE FROM <table> WHERE <key> IN (…)` from the
+  statically-known inserted key values (reads data, never modifies it).
+- **Navigate → Related Symbol** — from a country dataset file, jump to the same file in
+  other countries or to the DDL of every table the file references.
+- **Type-to-search** in both tool window trees; validation notifications carry a
+  **Show Report** action.
+
 ## Commit, push and database dry run
 
 - **Before commit** — every `.sql` file in the commit is validated; on errors a dialog lets

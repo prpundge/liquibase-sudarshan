@@ -48,7 +48,27 @@
             icon="/icons/sudarshan.svg"/>
 
         <notificationGroup id="Liquibase Sudarshan" displayType="BALLOON"/>
+
+        <!-- Interactive editor features: Ctrl+Click to DDL, hover schema docs,
+             changeset gutter markers, country/DDL related-file navigation, intentions -->
+        <gotoDeclarationHandler
+            implementation="com.company.liquibasevalidator.plugin.navigation.LiquibaseGotoDeclarationHandler"/>
+        <documentationProvider
+            implementation="com.company.liquibasevalidator.plugin.navigation.LiquibaseDocumentationProvider"/>
+        <codeInsight.lineMarkerProvider
+            language="TEXT"
+            implementationClass="com.company.liquibasevalidator.plugin.navigation.ChangesetLineMarkerProvider"/>
+        <gotoRelatedProvider
+            implementation="com.company.liquibasevalidator.plugin.navigation.LiquibaseGotoRelatedProvider"/>
+        <intentionAction>
+            <className>com.company.liquibasevalidator.plugin.intention.GenerateRollbackIntention</className>
+            <category>Liquibase</category>
+        </intentionAction>
     </extensions>
+
+    <!-- Ultimate's SQL files use the SQL language, not TEXT: register the gutter markers
+         for it only when the database plugin is present. -->
+    <depends optional="true" config-file="liquibase-sudarshan-database.xml">com.intellij.database</depends>
 
     <!-- Pre-commit validation: only active when the IDE has VCS support. -->
     <depends optional="true" config-file="liquibase-sudarshan-vcs.xml">com.intellij.modules.vcs</depends>
