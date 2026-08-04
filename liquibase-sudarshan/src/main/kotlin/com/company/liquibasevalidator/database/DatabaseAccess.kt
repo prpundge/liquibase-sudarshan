@@ -35,7 +35,26 @@ interface DatabaseSession : AutoCloseable {
 
     /** Row count of [table], or null when it cannot be counted safely. */
     fun rowCount(table: String): Long? = null
+
+    /** Sequences of the configured schema/owner (for the datasource browser). */
+    fun sequences(): List<SequenceInfo> = emptyList()
+
+    /** View names of the configured schema/owner. */
+    fun views(): List<String> = emptyList()
+
+    /** Indexes per table (lowercase table name), including non-unique ones. */
+    fun indexes(): Map<String, List<IndexInfo>> = emptyMap()
+
+    /** First [limit] rows of [table] — read-only data preview; null when not fetchable. */
+    fun dataPreview(table: String, limit: Int): TableData? = null
 }
+
+data class SequenceInfo(val name: String, val incrementBy: Long?, val lastNumber: Long?)
+
+data class IndexInfo(val name: String, val unique: Boolean, val columns: String)
+
+/** A read-only slice of table data for the browser's Data preview. */
+data class TableData(val columnNames: List<String>, val rows: List<List<String?>>)
 
 /** Shared guard: the only statement shape the plugin is ever allowed to evaluate. */
 object SqlGuards {

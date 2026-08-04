@@ -41,6 +41,11 @@ class SchemaIndexService(private val project: Project) : Disposable {
     /** Row counts per table (lowercase) at the last fetch; only for small schemas. */
     @Volatile private var rowCounts: Map<String, Long> = emptyMap()
 
+    /** Datasource-browser extras from the last fetch. */
+    @Volatile private var sequences: List<com.company.liquibasevalidator.database.SequenceInfo> = emptyList()
+    @Volatile private var views: List<String> = emptyList()
+    @Volatile private var indexes: Map<String, List<com.company.liquibasevalidator.database.IndexInfo>> = emptyMap()
+
     /** Bumped whenever the database overlay changes (refresh/clear). */
     private val dbVersion = AtomicLong()
 
@@ -136,11 +141,31 @@ class SchemaIndexService(private val project: Project) : Disposable {
     fun currentExecutedChangesets(): List<String>? = executedChangesets
 
     fun currentRowCounts(): Map<String, Long> = rowCounts
+    fun currentSequences(): List<com.company.liquibasevalidator.database.SequenceInfo> = sequences
+    fun currentViews(): List<String> = views
+    fun currentIndexes(): Map<String, List<com.company.liquibasevalidator.database.IndexInfo>> = indexes
+
+    /** Read-only data preview for the datasource browser; call from a background thread. */
+    fun fetchDataPreview(table: String, limit: Int): com.company.liquibasevalidator.database.TableData? {
+        val settings = LiquibaseSettings.getInstance(project).state
+        if (!settings.dbValidationEnabled || settings.dbUrl.isBlank()) return null
+        val config = DatabaseConfig(
+            jdbcUrl = settings.dbUrl,
+            user = settings.dbUser,
+            password = DbPasswordStore.load(settings.dbUrl, settings.dbUser),
+            schemaName = settings.dbSchema,
+            driverJarPath = settings.dbDriverJarPath,
+        )
+        return JdbcConnector(config).withSession { it.dataPreview(table, limit) }
+    }
 
     fun clearDatabaseOverlay() {
         databaseTables = null
         executedChangesets = null
         rowCounts = emptyMap()
+        sequences = emptyList()
+        views = emptyList()
+        indexes = emptyMap()
         dbVersion.incrementAndGet()
     }
 
@@ -169,6 +194,9 @@ class SchemaIndexService(private val project: Project) : Disposable {
                         val tables = session.fetchTables()
                         databaseTables = tables
                         executedChangesets = session.executedChangesets()?.sorted()
+                        sequences = session.sequences()
+                        views = session.views()
+                        indexes = session.indexes()
                         // row counts give the datasource browser a real DB-navigator feel;
                         // only for small schemas so big databases never slow the fetch down
                         rowCounts = if (tables.size <= MAX_TABLES_FOR_ROW_COUNTS) {

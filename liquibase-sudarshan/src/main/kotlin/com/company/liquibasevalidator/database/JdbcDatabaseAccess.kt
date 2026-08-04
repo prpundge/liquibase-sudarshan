@@ -112,6 +112,139 @@ private class JdbcSession(
         }
     }
 
+    override fun sequences(): List<SequenceInfo> = try {
+        val result = mutableListOf<SequenceInfo>()
+        if (oracle) {
+            val owner = config.schemaName.ifBlank { config.user }.uppercase()
+            connection.prepareStatement(
+                "SELECT sequence_name, increment_by, last_number FROM all_sequences WHERE sequence_owner = ? ORDER BY sequence_name",
+            ).use { statement ->
+                statement.queryTimeout = config.queryTimeoutSeconds
+                statement.setString(1, owner)
+                statement.executeQuery().use { rs ->
+                    while (rs.next()) {
+                        result += SequenceInfo(
+                            rs.getString(1).lowercase(), rs.getLong(2),
+                            rs.getLong(3),
+                        )
+                    }
+                }
+            }
+        } else {
+            val schemaName = config.schemaName.ifBlank { "public" }
+            connection.prepareStatement(
+                "SELECT sequence_name, increment FROM information_schema.sequences WHERE sequence_schema = ? ORDER BY sequence_name",
+            ).use { statement ->
+                statement.queryTimeout = config.queryTimeoutSeconds
+                statement.setString(1, schemaName)
+                statement.executeQuery().use { rs ->
+                    while (rs.next()) {
+                        result += SequenceInfo(rs.getString(1).lowercase(), rs.getString(2).toLongOrNull(), null)
+                    }
+                }
+            }
+        }
+        result
+    } catch (_: SQLException) {
+        emptyList()
+    }
+
+    override fun views(): List<String> = try {
+        val result = mutableListOf<String>()
+        val sql = if (oracle) {
+            "SELECT view_name FROM all_views WHERE owner = ? ORDER BY view_name"
+        } else {
+            "SELECT table_name FROM information_schema.views WHERE table_schema = ? ORDER BY table_name"
+        }
+        val scope = if (oracle) config.schemaName.ifBlank { config.user }.uppercase() else config.schemaName.ifBlank { "public" }
+        connection.prepareStatement(sql).use { statement ->
+            statement.queryTimeout = config.queryTimeoutSeconds
+            statement.setString(1, scope)
+            statement.executeQuery().use { rs -> while (rs.next()) result += rs.getString(1).lowercase() }
+        }
+        result
+    } catch (_: SQLException) {
+        emptyList()
+    }
+
+    override fun indexes(): Map<String, List<IndexInfo>> = try {
+        val result = LinkedHashMap<String, MutableList<IndexInfo>>()
+        if (oracle) {
+            val owner = config.schemaName.ifBlank { config.user }.uppercase()
+            connection.prepareStatement(
+                """
+                SELECT i.table_name, i.index_name, i.uniqueness, ic.column_name
+                FROM all_indexes i
+                JOIN all_ind_columns ic
+                  ON i.owner = ic.index_owner AND i.index_name = ic.index_name
+                WHERE i.owner = ?
+                ORDER BY i.table_name, i.index_name, ic.column_position
+                """.trimIndent(),
+            ).use { statement ->
+                statement.queryTimeout = config.queryTimeoutSeconds
+                statement.setString(1, owner)
+                statement.executeQuery().use { rs ->
+                    data class Row(val table: String, val index: String, val unique: Boolean, val column: String)
+                    val rows = mutableListOf<Row>()
+                    while (rs.next()) {
+                        rows += Row(
+                            rs.getString(1).lowercase(), rs.getString(2).lowercase(),
+                            rs.getString(3).equals("UNIQUE", true), rs.getString(4).lowercase(),
+                        )
+                    }
+                    for ((key, group) in rows.groupBy { it.table to it.index }) {
+                        result.getOrPut(key.first) { mutableListOf() } +=
+                            IndexInfo(key.second, group.first().unique, group.joinToString(", ") { it.column })
+                    }
+                }
+            }
+        } else {
+            val schemaName = config.schemaName.ifBlank { "public" }
+            connection.prepareStatement(
+                "SELECT tablename, indexname, indexdef FROM pg_indexes WHERE schemaname = ? ORDER BY tablename, indexname",
+            ).use { statement ->
+                statement.queryTimeout = config.queryTimeoutSeconds
+                statement.setString(1, schemaName)
+                statement.executeQuery().use { rs ->
+                    while (rs.next()) {
+                        val definition = rs.getString(3).orEmpty()
+                        result.getOrPut(rs.getString(1).lowercase()) { mutableListOf() } += IndexInfo(
+                            rs.getString(2).lowercase(),
+                            definition.contains("UNIQUE", ignoreCase = true),
+                            definition.substringAfter('(', "").substringBeforeLast(')', ""),
+                        )
+                    }
+                }
+            }
+        }
+        result
+    } catch (_: SQLException) {
+        emptyMap()
+    }
+
+    override fun dataPreview(table: String, limit: Int): TableData? {
+        if (!identifier.matches(table)) return null
+        val bounded = limit.coerceIn(1, 500)
+        val sql = "SELECT * FROM ${qualify(table)} " +
+            (if (oracle) "FETCH FIRST $bounded ROWS ONLY" else "LIMIT $bounded")
+        return try {
+            connection.prepareStatement(sql).use { statement ->
+                statement.queryTimeout = config.queryTimeoutSeconds
+                statement.executeQuery().use { rs ->
+                    val meta = rs.metaData
+                    val columns = (1..meta.columnCount).map { meta.getColumnLabel(it) }
+                    val rows = mutableListOf<List<String?>>()
+                    while (rs.next() && rows.size < bounded) {
+                        rows += (1..meta.columnCount).map { rs.getString(it) }
+                    }
+                    TableData(columns, rows)
+                }
+            }
+        } catch (_: SQLException) {
+            null
+        }
+    }
+
     override fun rowExists(table: String, column: String, value: String): Boolean? {
         // identifiers are strictly validated, then interpolated UNQUOTED so each database
         // applies its own case folding (Oracle upper, PostgreSQL lower)

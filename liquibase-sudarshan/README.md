@@ -87,11 +87,14 @@ never flagged just because metadata is unavailable.
   - **Validation tab**: errors (red) and warnings (amber) each on their own line;
     double-click to jump to the exact offset, or right-click for **Jump to Source /
     Copy Message / Validate Repository Again / Configure**.
-  - **Datasource tab**: connection status lamp (grey = not configured, amber = not
-    connected, green = connected, red = failed), the configured JDBC URL/user/schema,
-    **Connect / Test**, **Refresh Metadata** and **Configure…** buttons (Configure opens
-    the settings page to create/edit the datasource), and a live read-only table browser
-    of the connected database (tables → columns with types, NOT NULL, PK).
+  - **Datasource tab** — an SQL Developer-style, strictly **read-only** navigator:
+    connection status lamp (grey/amber/green/red), **Connect / Test**, **Refresh
+    Metadata**, **Configure…**, `DATABASECHANGELOG` execution entries, and the full
+    schema tree — **Tables** (Columns with types/NOT NULL/PK/DEFAULT, Constraints with
+    FK targets, Indexes with uniqueness, and a **Data** node: double-click for a
+    first-50-rows grid preview), **Sequences** (increment/last number) and **Views**.
+    Every query is a SELECT on a server-enforced READ ONLY transaction; the grid is
+    non-editable — there is no write path anywhere.
 
 ## Commit, push and database dry run
 

@@ -53,6 +53,10 @@
 - [x] Standalone CLI fat-jar (`gradlew cliJar`) — no Gradle needed at validation time
 - [x] VS Code extension (engines ^1.60.0, zero dependencies, 6 KB .vsix): inline
       squiggles + Problems panel, validate-on-save, dry-run capable via extraArgs
+- [x] SQL Developer-style read-only datasource navigator: tables with
+      Columns/Constraints/Indexes sub-nodes, Sequences, Views, and a double-click
+      Data preview grid (first 50 rows, non-editable, READ ONLY transaction) —
+      Oracle dictionary queries verified against a live 23ai instance
 
 ### 0.0.3 (quality)
 - [ ] Fix the remaining deprecated-API note (CredentialAttributes constructor on 2025.1+)
