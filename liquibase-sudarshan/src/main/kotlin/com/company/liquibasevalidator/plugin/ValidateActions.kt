@@ -43,6 +43,9 @@ internal object ValidationRunner {
                 val fileData = HashMap<String, FileData>()
                 val dryRunInputs = mutableListOf<LiquibaseDryRun.FileInput>()
 
+                // background indicators start indeterminate; setting a fraction while
+                // indeterminate throws IllegalStateException on 2024.2+
+                indicator.isIndeterminate = false
                 files.forEachIndexed { index, file ->
                     indicator.checkCanceled()
                     indicator.fraction = index.toDouble() / files.size
