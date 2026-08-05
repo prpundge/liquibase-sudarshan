@@ -10,7 +10,7 @@ plugins {
 }
 
 group = "com.company.liquibasevalidator"
-version = "0.2.1"
+version = "0.2.2"
 
 repositories {
     mavenCentral()
@@ -66,6 +66,7 @@ kover {
                     "com.company.liquibasevalidator.plugin.*",
                     "com.company.liquibasevalidator.settings.LiquibaseSettingsConfigurable*",
                     "com.company.liquibasevalidator.settings.DbPasswordStore",
+                    "com.company.liquibasevalidator.settings.BitbucketTokenStore",
                     "com.company.liquibasevalidator.schema.SchemaIndexService*",
                     "com.company.liquibasevalidator.cli.ValidatorCli*",
                     "com.company.liquibasevalidator.database.JdbcConnector*",
@@ -92,6 +93,12 @@ intellijPlatform {
         name = "Liquibase Sudarshan - SQL & Data Validator"
         version = project.version.toString()
         changeNotes = """
+            <b>0.2.2</b> — Bitbucket review is now connected end to end: the open PR is
+            auto-detected from the checked-out branch's Bitbucket remote (<i>Detect Open PR</i>),
+            the token is remembered in the IDE credential store after the first use, and when a
+            datasource is configured the review also runs the read-only dry run and shows, for
+            every table the PR touches, whether it already exists in the connected database and
+            its row count.<br/>
             <b>0.2.1</b> — Compatibility widened: now installs on IntelliJ IDEA <b>2022.3 and
             every newer version</b> (was 2023.2+; builds before 2022.2 run on Java 11 and cannot
             load modern plugins). Verified with the JetBrains Plugin Verifier against 2022.3,

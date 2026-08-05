@@ -88,6 +88,26 @@ class LiquibaseSettings : PersistentStateComponent<LiquibaseSettings.State> {
 }
 
 /** DB password storage via the IDE's PasswordSafe. */
+/** Bitbucket connection remembered in the IDE credential store, keyed by host —
+ *  entered once in the Review Bitbucket PR dialog, reused on every later review. */
+object BitbucketTokenStore {
+
+    private fun attributes(host: String): CredentialAttributes =
+        CredentialAttributes(serviceName = generateServiceName("LiquibaseSudarshan.Bitbucket", host))
+
+    /** user (empty for Server tokens) to token; nulls when nothing is stored yet. */
+    fun load(host: String): Pair<String, String>? {
+        val credentials = PasswordSafe.instance.get(attributes(host)) ?: return null
+        val token = credentials.getPasswordAsString().orEmpty()
+        if (token.isEmpty()) return null
+        return (credentials.userName ?: "") to token
+    }
+
+    fun save(host: String, user: String, token: String) {
+        PasswordSafe.instance.set(attributes(host), Credentials(user, token))
+    }
+}
+
 object DbPasswordStore {
 
     // single-argument constructor: the two-argument form is deprecated in newer platforms

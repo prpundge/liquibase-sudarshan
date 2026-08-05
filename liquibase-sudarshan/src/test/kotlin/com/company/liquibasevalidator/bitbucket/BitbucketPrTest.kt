@@ -98,6 +98,91 @@ class BitbucketPrTest {
     }
 
     @Test
+    fun `parses cloud remotes in ssh and https form`() {
+        for (url in listOf(
+            "git@bitbucket.org:myws/db-repo.git",
+            "git@bitbucket.org:myws/db-repo",
+            "https://bitbucket.org/myws/db-repo.git",
+            "https://pravin@bitbucket.org/myws/db-repo/",
+        )) {
+            val remote = BitbucketPr.parseRemote(url)!!
+            assertEquals(BitbucketPr.Kind.CLOUD, remote.kind, url)
+            assertEquals("myws", remote.owner, url)
+            assertEquals("db-repo", remote.repo, url)
+            assertEquals("bitbucket.org", remote.host)
+        }
+    }
+
+    @Test
+    fun `parses server remotes with scm path and ssh port`() {
+        val http = BitbucketPr.parseRemote("https://git.corp.com/stash/scm/db/scripts.git")!!
+        assertEquals(BitbucketPr.Kind.SERVER, http.kind)
+        assertEquals("db", http.owner)
+        assertEquals("scripts", http.repo)
+        assertEquals("https://git.corp.com/stash", http.serverBase)
+        assertEquals("git.corp.com", http.host)
+
+        val ssh = BitbucketPr.parseRemote("ssh://git@git.corp.com:7999/db/scripts.git")!!
+        assertEquals("https://git.corp.com", ssh.serverBase)
+        assertEquals("db", ssh.owner)
+
+        assertNull(BitbucketPr.parseRemote("git@github.com:owner/repo.git"))
+        assertNull(BitbucketPr.parseRemote("https://github.com/owner/repo.git"))
+    }
+
+    @Test
+    fun `remote repo builds a pr ref`() {
+        val ref = BitbucketPr.parseRemote("git@bitbucket.org:myws/db-repo.git")!!.toPrRef(7)
+        assertEquals("https://api.bitbucket.org/2.0/repositories/myws/db-repo/pullrequests/7", ref.apiBase)
+    }
+
+    @Test
+    fun `reads the first bitbucket remote from a git config`() {
+        val config = """
+            [core]
+                bare = false
+            [remote "origin"]
+                url = https://github.com/other/mirror.git
+                fetch = +refs/heads/*:refs/remotes/origin/*
+            [remote "work"]
+                url = https://git.corp.com/scm/db/scripts.git
+        """.trimIndent()
+        val remote = BitbucketPr.remoteFromGitConfig(config)!!
+        assertEquals("scripts", remote.repo)
+        assertNull(BitbucketPr.remoteFromGitConfig("[core]\n bare = false"))
+    }
+
+    @Test
+    fun `reads the branch from git HEAD, null when detached`() {
+        assertEquals("feature/db-123", BitbucketPr.branchFromGitHead("ref: refs/heads/feature/db-123\n"))
+        assertNull(BitbucketPr.branchFromGitHead("1ab5814abcdef1234567890"))
+    }
+
+    @Test
+    fun `open pr search urls for both kinds`() {
+        val cloud = BitbucketPr.parseRemote("git@bitbucket.org:myws/db-repo.git")!!
+        assertEquals(
+            "https://api.bitbucket.org/2.0/repositories/myws/db-repo/pullrequests?state=OPEN" +
+                "&q=source.branch.name%3D%22feature%2Fx%22",
+            BitbucketPr.openPrSearchUrl(cloud, "feature/x"),
+        )
+        val server = BitbucketPr.parseRemote("https://git.corp.com/scm/db/scripts.git")!!
+        assertEquals(
+            "https://git.corp.com/rest/api/1.0/projects/db/repos/scripts/pull-requests?state=OPEN" +
+                "&direction=OUTGOING&at=refs%2Fheads%2Ffeature%2Fx",
+            BitbucketPr.openPrSearchUrl(server, "feature/x"),
+        )
+    }
+
+    @Test
+    fun `extracts the first open pr id from a search response`() {
+        assertEquals(42L, BitbucketPr.firstOpenPrId("""{"size":1,"values":[{"id":42,"title":"x"}]}"""))
+        assertNull(BitbucketPr.firstOpenPrId("""{"size":0,"values":[]}"""))
+        // ids OUTSIDE the values array must not match
+        assertNull(BitbucketPr.firstOpenPrId("""{"id":9,"values":[]}"""))
+    }
+
+    @Test
     fun `json escaping covers control characters, tabs and backslashes`() {
         assertEquals("a\\\\b\\\"c\\n\\r\\t\\u0001", BitbucketPr.jsonEscape("a\\b\"c\n\r\t"))
     }

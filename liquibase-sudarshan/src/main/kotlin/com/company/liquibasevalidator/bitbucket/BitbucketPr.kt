@@ -106,4 +106,71 @@ object BitbucketPr {
             }
         }
     }
+
+    // ---------------------------------------------------------------------------------------
+    // "Already connected": derive the repository from the checked-out git remote and find
+    // the open PR of the current branch — so the review needs zero copy-pasting.
+    // ---------------------------------------------------------------------------------------
+
+    /** A Bitbucket repository derived from a git remote URL. */
+    data class RemoteRepo(val kind: Kind, val owner: String, val repo: String, val serverBase: String = "") {
+        /** Host the credentials are stored under (bitbucket.org or the server host). */
+        val host: String
+            get() = when (kind) {
+                Kind.CLOUD -> "bitbucket.org"
+                Kind.SERVER -> serverBase.substringAfter("://").substringBefore('/')
+            }
+
+        fun toPrRef(id: Long): PrRef = PrRef(kind, owner, repo, id, serverBase)
+    }
+
+    private val cloudSsh = Regex("^git@bitbucket\\.org:([^/]+)/(.+?)(?:\\.git)?$")
+    private val cloudHttp = Regex("^https?://(?:[^@/]+@)?bitbucket\\.org/([^/]+)/([^/]+?)(?:\\.git)?/?$")
+    private val serverHttp = Regex("^(https?://[^/?#]+(?:/[^/?#]+)*?)/scm/([^/]+)/([^/]+?)(?:\\.git)?/?$")
+    private val serverSsh = Regex("^ssh://git@([^:/]+)(?::\\d+)?/([^/]+)/([^/]+?)(?:\\.git)?$")
+
+    /** Parses a git remote URL (https or ssh, Cloud or Server); null when not Bitbucket. */
+    fun parseRemote(url: String): RemoteRepo? {
+        val trimmed = url.trim()
+        cloudSsh.matchEntire(trimmed)?.let { return RemoteRepo(Kind.CLOUD, it.groupValues[1], it.groupValues[2]) }
+        cloudHttp.matchEntire(trimmed)?.let { return RemoteRepo(Kind.CLOUD, it.groupValues[1], it.groupValues[2]) }
+        serverHttp.matchEntire(trimmed)?.let {
+            return RemoteRepo(Kind.SERVER, it.groupValues[2], it.groupValues[3], serverBase = it.groupValues[1])
+        }
+        serverSsh.matchEntire(trimmed)?.let {
+            // ssh tells us the host but not the web scheme/context — https://host is the
+            // standard Bitbucket Server setup
+            return RemoteRepo(Kind.SERVER, it.groupValues[2], it.groupValues[3], serverBase = "https://${it.groupValues[1]}")
+        }
+        return null
+    }
+
+    /** First `url = …` under a Bitbucket remote in a plain `.git/config` text. */
+    fun remoteFromGitConfig(gitConfigText: String): RemoteRepo? =
+        Regex("""url\s*=\s*(\S+)""").findAll(gitConfigText)
+            .mapNotNull { parseRemote(it.groupValues[1]) }
+            .firstOrNull()
+
+    /** Branch name from a plain `.git/HEAD` text; null when detached. */
+    fun branchFromGitHead(gitHeadText: String): String? =
+        gitHeadText.trim().removePrefix("ref: refs/heads/").takeIf { it != gitHeadText.trim() }
+
+    /** REST query returning the open PRs whose source branch is [branch]. */
+    fun openPrSearchUrl(remote: RemoteRepo, branch: String): String = when (remote.kind) {
+        Kind.CLOUD ->
+            "https://api.bitbucket.org/2.0/repositories/${remote.owner}/${remote.repo}/pullrequests" +
+                "?state=OPEN&q=" + urlEncode("source.branch.name=\"$branch\"")
+        Kind.SERVER ->
+            "${remote.serverBase}/rest/api/1.0/projects/${remote.owner}/repos/${remote.repo}/pull-requests" +
+                "?state=OPEN&direction=OUTGOING&at=" + urlEncode("refs/heads/$branch")
+    }
+
+    /** First PR id in a Cloud/Server search response ({"values":[{"id":N,…}]}); null if none. */
+    fun firstOpenPrId(searchResponseJson: String): Long? {
+        val values = searchResponseJson.substringAfter("\"values\"", "")
+        return Regex("\"id\"\\s*:\\s*(\\d+)").find(values)?.groupValues?.get(1)?.toLong()
+    }
+
+    private fun urlEncode(text: String): String =
+        java.net.URLEncoder.encode(text, Charsets.UTF_8.name())
 }
