@@ -10,7 +10,7 @@ plugins {
 }
 
 group = "com.company.liquibasevalidator"
-version = "0.2.0"
+version = "0.2.1"
 
 repositories {
     mavenCentral()
@@ -92,6 +92,11 @@ intellijPlatform {
         name = "Liquibase Sudarshan - SQL & Data Validator"
         version = project.version.toString()
         changeNotes = """
+            <b>0.2.1</b> — Compatibility widened: now installs on IntelliJ IDEA <b>2022.3 and
+            every newer version</b> (was 2023.2+; builds before 2022.2 run on Java 11 and cannot
+            load modern plugins). Verified with the JetBrains Plugin Verifier against 2022.3,
+            2023.2, 2024.2 and 2025.1. Also fixes a progress-indicator exception during
+            repository validation on 2024.2+.<br/>
             <b>0.2.0</b> — <i>Release Dry Run…</i>: pick a country, environment and server and
             compare — strictly read-only — the data the branch would write against the data in
             the live database, per column (INSERT / UPDATE with diffs / SAME / CONFLICT);
@@ -166,22 +171,24 @@ intellijPlatform {
             </ul>
         """.trimIndent()
         ideaVersion {
-            // Floor: 2023.2 (build 232), Community and Ultimate (JVM 17 bytecode,
-            // Kotlin 1.8 API — see compiler options below). 2023.1 is impossible:
-            // PrePushHandler's 3-arg handle() only exists from 232 (verified with the
-            // Plugin Verifier — 231 fails with AbstractMethodError on push).
+            // Floor: 2022.3 (build 223), Community and Ultimate. This is the hard floor
+            // for a single artifact: 2022.2 was the first release running on JBR 17
+            // (2020.x-2022.1 run Java 11 and cannot load JVM-17 bytecode at all), and
+            // ActionUpdateThread arrived in 2022.3. Kotlin API is pinned to 1.7 — what
+            // 2022.3 bundles. Pre-232 the PrePushHandler signature differs — both
+            // signatures are implemented (see PrePushValidationHandler).
             // No ceiling: only long-stable platform APIs are used, so the plugin stays
             // compatible with every future IDE build.
-            sinceBuild = "232"
+            sinceBuild = "223"
             untilBuild = provider { null }
         }
     }
 
     pluginVerification {
         ides {
-            // Pinned versions with downloadable ZIP artifacts: the floor, the compile
-            // target, and a recent line ('recommended()' can pick not-yet-published ones).
-            ides(listOf("IC-2023.2.7", "IC-2024.2.4", "IC-2025.1.3"))
+            // Pinned versions with downloadable ZIP artifacts: the floor, the previous
+            // floor, the compile target, and a recent line.
+            ides(listOf("IC-2022.3.3", "IC-2023.2.7", "IC-2024.2.4", "IC-2025.1.3"))
         }
     }
 
@@ -209,7 +216,8 @@ java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(21)
     }
-    // Bytecode floor 17 so IDEs from 2023.2 (JBR 17) up to current can load the plugin.
+    // Bytecode floor 17 so IDEs from 2022.2 (first JBR 17 release) up to current can
+    // load the plugin. Older IDEs (2020.x-2022.1) run Java 11 and cannot.
     sourceCompatibility = JavaVersion.VERSION_17
     targetCompatibility = JavaVersion.VERSION_17
 }
@@ -217,8 +225,10 @@ java {
 kotlin {
     compilerOptions {
         jvmTarget = JvmTarget.JVM_17
-        // 2023.2 bundles Kotlin 1.8 — restrict stdlib API usage accordingly.
-        apiVersion = org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_1_8
+        // 2022.3 (the sinceBuild floor) bundles Kotlin 1.7 — restrict stdlib API usage
+        // accordingly so no call resolves to a function newer IDEs have but 223 lacks.
+        apiVersion = org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_1_7
+        languageVersion = org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_1_9
     }
 }
 

@@ -20,6 +20,18 @@ class LiquibasePrePushHandler : PrePushHandler {
 
     override fun getPresentableName(): String = "Liquibase validation"
 
+    /**
+     * 2022.3–2023.1 entry point: those builds call `handle(pushDetails, indicator)`
+     * without the project parameter (on 2023.2+ it survives as a deprecated overload
+     * and the platform calls the 3-parameter variant below instead).
+     */
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun handle(pushDetails: List<PushInfo>, indicator: ProgressIndicator): PrePushHandler.Result {
+        val project = pushDetails.firstOrNull()?.repository?.project
+            ?: return PrePushHandler.Result.OK
+        return handle(project, pushDetails, indicator)
+    }
+
     override fun handle(
         project: Project,
         pushDetails: List<PushInfo>,

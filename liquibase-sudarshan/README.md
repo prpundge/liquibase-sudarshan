@@ -271,11 +271,13 @@ Requirements: JDK 21 (Gradle toolchain), internet access for the first build.
 3. Choose `build/distributions/liquibase-sudarshan-0.0.1.zip`, restart the IDE.
 4. Open your database repository, configure **Settings | Tools | Liquibase Sudarshan**.
 
-**IDE compatibility:** IntelliJ IDEA (Community or Ultimate) **2023.2 and every newer
+**IDE compatibility:** IntelliJ IDEA (Community or Ultimate) **2022.3 and every newer
 version** — the plugin declares no upper build bound, uses only long-stable platform APIs
 and ships JVM 17 bytecode, so new IDE releases (2024.x, 2025.x, 2026.x, …) install it
 without an update. Compatibility is checked with the JetBrains Plugin Verifier
-(`./gradlew verifyPlugin`).
+(`./gradlew verifyPlugin`) against 2022.3, 2023.2, 2024.2 and 2025.1. Older IDEs
+(2020.x–2022.1) run on Java 11 and cannot load JVM-17 plugin bytecode — 2022.2 was the
+first JetBrains Runtime 17 release, so 2022.3 is the practical floor.
 
 ## Publishing to JetBrains Marketplace
 
