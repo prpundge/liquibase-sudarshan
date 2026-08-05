@@ -10,7 +10,7 @@ plugins {
 }
 
 group = "com.company.liquibasevalidator"
-version = "0.1.1"
+version = "0.2.0"
 
 repositories {
     mavenCentral()
@@ -92,6 +92,16 @@ intellijPlatform {
         name = "Liquibase Sudarshan - SQL & Data Validator"
         version = project.version.toString()
         changeNotes = """
+            <b>0.2.0</b> — <i>Release Dry Run…</i>: pick a country, environment and server and
+            compare — strictly read-only — the data the branch would write against the data in
+            the live database, per column (INSERT / UPDATE with diffs / SAME / CONFLICT);
+            changesets already in DATABASECHANGELOG from previous releases are shown as SKIP
+            and never re-execute. <i>Review Bitbucket PR…</i> (and CLI
+            <code>--bitbucket-pr</code>): fetch a pull request's diff from Bitbucket Cloud or
+            Server/Data Center, validate only its changed lines, and optionally post the review
+            to the PR as inline comments plus a summary. Also: parser robustness fix
+            (malformed <code>VALUES</code> rows could hang the editor) and 100% enforced line
+            coverage of the validation core.<br/>
             <b>0.1.1</b> — Marketplace listing polish: point-based description; no functional
             changes.<br/>
             <b>0.1.0</b> — Release execution simulation: <i>Tools | Liquibase Sudarshan |
@@ -134,6 +144,11 @@ intellijPlatform {
                     validation report with navigation</li>
                 <li>Optional <i>read-only</i> database dry run: pending changesets, live precondition
                     checks, foreign keys, INSERT/UPDATE data preview (PostgreSQL and Oracle)</li>
+                <li>Release dry run window: per-column comparison of the data the branch would write
+                    vs the data in a live server — INSERT / UPDATE with diffs / SAME / CONFLICT;
+                    changesets already released are shown as SKIP (DATABASECHANGELOG-aware)</li>
+                <li>Bitbucket pull-request review (Cloud and Server/Data Center): validate only the
+                    PR's changed lines and optionally post inline review comments</li>
             </ul>
             <p><b>Release execution simulation (Simulate Release…):</b> validates the exact ordered
             country/environment run your CI/CD pipeline (e.g. Jenkins) would execute:</p>
