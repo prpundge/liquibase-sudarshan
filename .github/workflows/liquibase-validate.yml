@@ -22,9 +22,9 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Build and test the plugin
+      - name: Build and test the plugin (enforces 100% line coverage of the headless core)
         working-directory: liquibase-sudarshan
-        run: ./gradlew test --console=plain
+        run: ./gradlew test koverVerify --console=plain
 
       - name: Validate the PostgreSQL sample repository (valid subset must stay clean)
         working-directory: liquibase-sudarshan

@@ -30,6 +30,11 @@ import kotlin.streams.toList
  *                [--db-url=<jdbc> --db-user=<u> [--db-password=<p>] [--db-schema=<s>]]
  *                [--patch=<file.diff>]   PR-review mode: only findings on changed lines
  *                [--github]              emit GitHub Actions annotations (inline PR comments)
+ *                [--bitbucket-pr=<url>]  fetch the PR's diff from Bitbucket (Cloud or Server),
+ *                                        review only its changed lines, and print the review;
+ *                [--bitbucket-post]      …and post it to the PR as inline comments + summary
+ *                [--bitbucket-token=<t>] auth (or env BITBUCKET_TOKEN); --bitbucket-user for
+ *                                        Cloud app passwords (or env BITBUCKET_USER)
  *
  * Output (default): <absolute path>:<line>:<column>: <error|warning|info>: <message>
  * Output (--github): ::error file=<relative>,line=<l>,col=<c>::<message>
@@ -50,6 +55,21 @@ object ValidatorCli {
         val failOnWarnings = args.contains("--fail-on-warnings")
         val options = ValidationOptions(treatEmptyStringAsNull = args.contains("--oracle"))
 
+        // Bitbucket PR review: the PR's own diff becomes the patch filter.
+        val bitbucketRef = args.optionValue("--bitbucket-pr")?.let { url ->
+            com.company.liquibasevalidator.bitbucket.BitbucketPr.parse(url) ?: run {
+                System.err.println("error: not a recognizable Bitbucket pull-request URL: $url")
+                kotlin.system.exitProcess(2)
+            }
+        }
+        val bitbucketToken = args.optionValue("--bitbucket-token")
+            ?: System.getenv("BITBUCKET_TOKEN").orEmpty()
+        val bitbucketAuth = if (bitbucketToken.isBlank()) null else {
+            com.company.liquibasevalidator.bitbucket.BitbucketPr.authHeader(
+                args.optionValue("--bitbucket-user") ?: System.getenv("BITBUCKET_USER"), bitbucketToken,
+            )
+        }
+
         val patch = args.optionValue("--patch")?.let { patchPath ->
             val file = Paths.get(patchPath).let { if (it.isAbsolute) it else root.resolve(it) }
             if (!file.isRegularFile()) {
@@ -64,8 +84,26 @@ object ValidatorCli {
                 )
             }
             parsed
+        } ?: bitbucketRef?.let { ref ->
+            val diff = try {
+                com.company.liquibasevalidator.bitbucket.BitbucketClient(bitbucketAuth).getText(ref.diffUrl)
+            } catch (e: Exception) {
+                System.err.println("error: cannot fetch the PR diff from Bitbucket: ${e.message}")
+                kotlin.system.exitProcess(2)
+            }
+            if (!com.company.liquibasevalidator.bitbucket.BitbucketPr.looksLikeUnifiedDiff(diff)) {
+                System.err.println(
+                    "error: Bitbucket did not return a unified diff for ${ref.display} — " +
+                        "generate one locally and pass it with --patch=<file.diff>",
+                )
+                kotlin.system.exitProcess(2)
+            }
+            PatchFilter.parse(diff)
         }
-        val reporter = Reporter(github = args.contains("--github"), repoRoot = root, patch = patch)
+        val reporter = Reporter(
+            github = args.contains("--github"), repoRoot = root, patch = patch,
+            collect = bitbucketRef != null,
+        )
 
         // Release simulation mode: validate the exact ordered (country, environment) run.
         if (args.contains("--simulate")) {
@@ -170,7 +208,56 @@ object ValidatorCli {
             "Liquibase Sudarshan: ${files.size} file(s) scanned, " +
                 "${reporter.errors} error(s), ${reporter.warnings} warning(s)",
         )
+        if (bitbucketRef != null) {
+            publishBitbucketReview(bitbucketRef, bitbucketAuth, reporter, post = args.contains("--bitbucket-post"))
+        }
         if (reporter.errors > 0 || (failOnWarnings && reporter.warnings > 0)) kotlin.system.exitProcess(1)
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Bitbucket PR review: print (default) or post the collected findings to the PR.
+    // ---------------------------------------------------------------------------------------
+
+    private const val MAX_PR_COMMENTS = 25
+
+    private fun publishBitbucketReview(
+        ref: com.company.liquibasevalidator.bitbucket.BitbucketPr.PrRef,
+        auth: String?,
+        reporter: Reporter,
+        post: Boolean,
+    ) {
+        val bp = com.company.liquibasevalidator.bitbucket.BitbucketPr
+        val summary = bp.summaryText(reporter.errors, reporter.warnings, reporter.patch?.fileCount ?: 0)
+        println()
+        println("Bitbucket review for ${ref.display}: ${reporter.collected.size} inline comment(s)")
+        println("  summary: $summary")
+        if (!post) {
+            reporter.collected.forEach { println("  ${it.path}:${it.line}: [${it.label}] ${it.message}") }
+            println("  (preview only — add --bitbucket-post to publish this review to the PR)")
+            return
+        }
+        if (auth == null) {
+            System.err.println("error: --bitbucket-post needs --bitbucket-token=<t> or the BITBUCKET_TOKEN env variable")
+            kotlin.system.exitProcess(2)
+        }
+        val client = com.company.liquibasevalidator.bitbucket.BitbucketClient(auth)
+        try {
+            client.postJson(ref.commentsUrl, bp.summaryCommentJson(ref.kind, summary))
+            val toPost = reporter.collected.take(MAX_PR_COMMENTS)
+            for (finding in toPost) {
+                client.postJson(
+                    ref.commentsUrl,
+                    bp.inlineCommentJson(ref.kind, finding.path, finding.line, "[${finding.label}] ${finding.message}"),
+                )
+            }
+            if (reporter.collected.size > toPost.size) {
+                println("  note: ${reporter.collected.size - toPost.size} comment(s) beyond the first $MAX_PR_COMMENTS were not posted")
+            }
+            println("  posted ${toPost.size} inline comment(s) + 1 summary to ${ref.display}")
+        } catch (e: Exception) {
+            System.err.println("error: posting the review failed: ${e.message}")
+            kotlin.system.exitProcess(2)
+        }
     }
 
     // ---------------------------------------------------------------------------------------
@@ -252,11 +339,20 @@ object ValidatorCli {
 
     // ---------------------------------------------------------------------------------------
 
+    /** One reported (unsuppressed) finding, kept for Bitbucket review posting. */
+    private data class CollectedFinding(val path: String, val line: Int, val label: String, val message: String)
+
     /** Single output gate: patch-filtering, error/warning counting, gcc or GitHub format. */
-    private class Reporter(val github: Boolean, val repoRoot: Path, val patch: PatchFilter?) {
+    private class Reporter(
+        val github: Boolean,
+        val repoRoot: Path,
+        val patch: PatchFilter?,
+        val collect: Boolean = false,
+    ) {
         var errors = 0
         var warnings = 0
         var suppressed = 0
+        val collected = mutableListOf<CollectedFinding>()
 
         fun finding(path: String, line: Int, column: Int, severity: Severity, message: String) {
             val label = when (severity) {
@@ -274,6 +370,9 @@ object ValidatorCli {
             when (label) {
                 "error" -> errors++
                 "warning" -> warnings++
+            }
+            if (collect && label != "info") {
+                collected += CollectedFinding(relative(path), line, label, message)
             }
             emit(path, line, column, label, message)
         }

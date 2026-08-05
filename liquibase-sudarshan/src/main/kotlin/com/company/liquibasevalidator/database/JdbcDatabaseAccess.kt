@@ -259,6 +259,28 @@ private class JdbcSession(
             statement.executeQuery().use { rs -> return rs.next() }
         }
     }
+
+    override fun selectRowByKey(table: String, keyColumn: String, keyValue: String): Map<String, String?>? {
+        if (!identifier.matches(table) || !identifier.matches(keyColumn)) return null
+        val textExpr = if (oracle) "TRIM(TO_CHAR($keyColumn))" else "TRIM(CAST($keyColumn AS TEXT))"
+        val sql = "SELECT * FROM ${qualify(table)} WHERE $textExpr = ? " +
+            (if (oracle) "AND ROWNUM = 1" else "LIMIT 1")
+        return try {
+            connection.prepareStatement(sql).use { statement ->
+                statement.queryTimeout = config.queryTimeoutSeconds
+                statement.setString(1, keyValue.trim())
+                statement.executeQuery().use { rs ->
+                    if (!rs.next()) return null
+                    val meta = rs.metaData
+                    (1..meta.columnCount).associate {
+                        meta.getColumnLabel(it).lowercase() to rs.getString(it)
+                    }
+                }
+            }
+        } catch (_: SQLException) {
+            null
+        }
+    }
 }
 
 // -------------------------------------------------------------------------------------------

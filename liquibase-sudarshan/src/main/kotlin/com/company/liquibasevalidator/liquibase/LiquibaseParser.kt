@@ -350,8 +350,6 @@ object LiquibaseParser {
         private val sqlChecks = mutableListOf<SqlCheck>()
         private val rollbacks = mutableListOf<RollbackSql>()
         private var lastRollbackWasPrevLine = false
-        var hasBody = false
-            private set
 
         fun setComment(value: String) { comment = value }
 
@@ -386,7 +384,6 @@ object LiquibaseParser {
         }
 
         fun markBodyLine() {
-            hasBody = true
             lastRollbackWasPrevLine = false
         }
 

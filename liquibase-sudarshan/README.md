@@ -226,6 +226,33 @@ environment pickers, manifest and findings in the tool window). `--db-url` compo
 seed the simulation with the live schema, read-only as always; `--github`, `--patch` and
 `--fail-on-warnings` compose too.
 
+### Release dry run — compare the branch against a live server
+
+**Tools | Liquibase Sudarshan | Release Dry Run…** picks a country, an environment and a
+server (JDBC URL/user prefilled from settings, editable per run — point it at the SIT,
+UAT or PROD replica you are about to release to) and shows, without executing anything:
+
+- **Execution plan** — every changeset in release order: RUN, or **SKIP when it is
+  already in that server's DATABASECHANGELOG** from a previous release (Liquibase will
+  not execute it again), HALT on a failing precondition, BLOCKED after a HALT.
+- **Data comparison** — per column, the value the branch would write next to the value
+  currently in the database: **INSERT** (new row), **UPDATE** (with the exact changed
+  columns), **SAME**, **CONFLICT** (direct INSERT onto an existing key — the release
+  would fail), **SKIP** (already released). Strictly read-only, SELECTs only.
+
+### Bitbucket pull-request review
+
+Paste a PR link — `bitbucket.org/...` or a Bitbucket Server/Data Center
+`https://host/projects/KEY/repos/slug/pull-requests/N` — and the plugin fetches the PR's
+diff, validates **only its changed lines**, and (optionally) posts the review to the PR
+as inline comments plus a summary verdict:
+
+- IDE: **Tools | Liquibase Sudarshan | Review Bitbucket PR…** (results in the tool
+  window; "post" is an explicit checkbox).
+- CLI/CI: `--bitbucket-pr=<url> [--bitbucket-post] [--bitbucket-token=… |
+  env BITBUCKET_TOKEN] [--bitbucket-user=… ]` — Cloud app passwords use
+  `--bitbucket-user`, Server HTTP access tokens just the token.
+
 ## Building and running
 
 Requirements: JDK 21 (Gradle toolchain), internet access for the first build.

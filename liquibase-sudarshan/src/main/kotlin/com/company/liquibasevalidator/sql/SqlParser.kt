@@ -39,8 +39,6 @@ class SqlParser private constructor(private val text: String) {
     private fun accept(vararg keywords: String): SqlToken? =
         if (peek().isKeyword(*keywords)) advance() else null
 
-    private fun acceptType(type: SqlTokenType): SqlToken? = if (peek().type == type) advance() else null
-
     private fun isNameToken(t: SqlToken) = t.type == SqlTokenType.IDENT || t.type == SqlTokenType.QUOTED_IDENT
 
     private fun nameOf(t: SqlToken): String = if (t.type == SqlTokenType.QUOTED_IDENT) t.value else t.text
@@ -258,6 +256,7 @@ class SqlParser private constructor(private val text: String) {
                 t.isKeyword("CONSTRAINT") -> { advance(); if (isNameToken(peek())) last = advance() }
                 t.isKeyword("COLLATE") -> { advance(); if (isNameToken(peek())) last = advance() }
                 t.isKeyword("GENERATED") -> {
+                    last = advance() // GENERATED; the identity/expression tail is skipped
                     last = skipBalancedUntil(
                         setOf("NOT", "PRIMARY", "UNIQUE", "REFERENCES", "CHECK", "CONSTRAINT"),
                         setOf(SqlTokenType.COMMA, SqlTokenType.RPAREN),
@@ -540,8 +539,12 @@ class SqlParser private constructor(private val text: String) {
         val open = advance() // (
         val values = mutableListOf<SqlValueExpr>()
         while (!atEof() && peek().type != SqlTokenType.RPAREN) {
+            val before = pos
             values += parseValueExpr(setOf(SqlTokenType.COMMA, SqlTokenType.RPAREN), emptySet())
             if (peek().type == SqlTokenType.COMMA) advance()
+            // No progress: a token the expression parser refuses (stray ';' in an unclosed
+            // row) — bail out instead of looping forever on the malformed input.
+            if (pos == before) break
         }
         val close = if (peek().type == SqlTokenType.RPAREN) advance() else tokens[maxOf(pos - 1, 0)]
         return ValuesRow(values, SrcRange(open.start, close.end))
@@ -724,8 +727,10 @@ class SqlParser private constructor(private val text: String) {
                     if (accept("VALUES") != null && peek().type == SqlTokenType.LPAREN) {
                         advance()
                         while (!atEof() && peek().type != SqlTokenType.RPAREN) {
+                            val before = pos
                             values += parseValueExpr(setOf(SqlTokenType.COMMA, SqlTokenType.RPAREN), setOf("WHEN"))
                             if (peek().type == SqlTokenType.COMMA) advance()
+                            if (pos == before) break // malformed list: never spin in place
                         }
                         if (peek().type == SqlTokenType.RPAREN) advance()
                     } else if (peek().isKeyword("DEFAULT")) {

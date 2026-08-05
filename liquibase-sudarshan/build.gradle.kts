@@ -71,13 +71,13 @@ kover {
                     "com.company.liquibasevalidator.database.JdbcConnector*",
                     "com.company.liquibasevalidator.database.JdbcSession*",
                     "com.company.liquibasevalidator.database.JdbcDrivers*",
+                    "com.company.liquibasevalidator.bitbucket.BitbucketClient*",
                 )
             }
         }
         verify {
             rule("line coverage of the headless-testable core") {
-                // Ratchet: raised as coverage work lands; target is 100.
-                minBound(85)
+                minBound(100)
             }
         }
     }
@@ -211,6 +211,8 @@ tasks {
     test {
         useJUnitPlatform()
         systemProperty("java.awt.headless", "true")
+        // Platform-test fixtures + coverage instrumentation exceed the 512m worker default.
+        maxHeapSize = "2g"
     }
 
     // Standalone CLI fat-jar (used by the VS Code extension and CI): includes the core,

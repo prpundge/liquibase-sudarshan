@@ -14,3 +14,4 @@ bin/
 # Secrets / local
 *.local.json
 certificate/
+*.hprof

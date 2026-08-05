@@ -97,12 +97,24 @@
                 class="com.company.liquibasevalidator.plugin.SimulateReleaseAction"
                 text="Simulate Release…"
                 description="Validate the exact ordered country/environment execution Jenkins would run - sequential schema build-up, cross-file checks and environment policies"/>
+            <action
+                id="LiquibaseSudarshan.ReleaseDryRun"
+                class="com.company.liquibasevalidator.plugin.ReleaseDryRunAction"
+                text="Release Dry Run…"
+                description="Compare the data this branch would write for a country/environment against a live server - INSERT/UPDATE/SAME/CONFLICT per column, changesets already in DATABASECHANGELOG shown as SKIP - strictly read-only"/>
+            <action
+                id="LiquibaseSudarshan.ReviewBitbucketPr"
+                class="com.company.liquibasevalidator.plugin.ReviewBitbucketPrAction"
+                text="Review Bitbucket PR…"
+                description="Fetch a Bitbucket pull request's diff, validate only its changed lines and optionally post the review to the PR as inline comments"/>
             <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
         </group>
         <group id="LiquibaseSudarshan.ToolsMenu" text="Liquibase Sudarshan" popup="true">
             <reference ref="LiquibaseSudarshan.ValidateRepository"/>
             <reference ref="LiquibaseSudarshan.SimulateRelease"/>
+            <reference ref="LiquibaseSudarshan.ReleaseDryRun"/>
+            <reference ref="LiquibaseSudarshan.ReviewBitbucketPr"/>
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </group>
     </actions>

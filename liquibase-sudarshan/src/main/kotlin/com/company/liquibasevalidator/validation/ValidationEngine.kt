@@ -49,23 +49,6 @@ data class ValidationResult(
  */
 class ValidationEngine(private val options: ValidationOptions = ValidationOptions()) {
 
-    private companion object {
-        /** Statement starters any target database (or Liquibase itself) understands. */
-        val KNOWN_STATEMENT_WORDS = setOf(
-            "SELECT", "WITH", "INSERT", "MERGE", "UPDATE", "DELETE", "CREATE", "ALTER", "DROP",
-            "TRUNCATE", "GRANT", "REVOKE", "COMMENT", "SET", "BEGIN", "DECLARE", "END", "CALL",
-            "EXEC", "EXECUTE", "EXPLAIN", "ANALYZE", "VACUUM", "LOCK", "RENAME", "PURGE",
-            "FLASHBACK", "SAVEPOINT", "COMMIT", "ROLLBACK", "USE", "SHOW", "COPY", "VALUES",
-            "REFRESH", "DO", "REM", "PROMPT", "WHENEVER", "DEFINE", "UNDEFINE",
-        )
-
-        /** Candidates for typo suggestions. */
-        val SUGGESTION_KEYWORDS = listOf(
-            "INSERT", "MERGE", "CREATE", "UPDATE", "DELETE", "SELECT", "ALTER", "DROP",
-            "TRUNCATE", "GRANT", "REVOKE", "COMMENT", "VALUES", "BEGIN", "DECLARE",
-        )
-    }
-
     fun validate(fileText: String, schema: SchemaProvider): ValidationResult {
         val sink = ProblemSink()
         val script = SqlParser.parse(fileText)
@@ -261,3 +244,18 @@ class ValidationEngine(private val options: ValidationOptions = ValidationOption
         }
     }
 }
+
+/** Statement starters any target database (or Liquibase itself) understands. */
+private val KNOWN_STATEMENT_WORDS = setOf(
+    "SELECT", "WITH", "INSERT", "MERGE", "UPDATE", "DELETE", "CREATE", "ALTER", "DROP",
+    "TRUNCATE", "GRANT", "REVOKE", "COMMENT", "SET", "BEGIN", "DECLARE", "END", "CALL",
+    "EXEC", "EXECUTE", "EXPLAIN", "ANALYZE", "VACUUM", "LOCK", "RENAME", "PURGE",
+    "FLASHBACK", "SAVEPOINT", "COMMIT", "ROLLBACK", "USE", "SHOW", "COPY", "VALUES",
+    "REFRESH", "DO", "REM", "PROMPT", "WHENEVER", "DEFINE", "UNDEFINE",
+)
+
+/** Candidates for typo suggestions. */
+private val SUGGESTION_KEYWORDS = listOf(
+    "INSERT", "MERGE", "CREATE", "UPDATE", "DELETE", "SELECT", "ALTER", "DROP",
+    "TRUNCATE", "GRANT", "REVOKE", "COMMENT", "VALUES", "BEGIN", "DECLARE",
+)

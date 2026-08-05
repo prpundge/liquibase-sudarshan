@@ -47,6 +47,10 @@ interface DatabaseSession : AutoCloseable {
 
     /** First [limit] rows of [table] — read-only data preview; null when not fetchable. */
     fun dataPreview(table: String, limit: Int): TableData? = null
+
+    /** The single row where [keyColumn] = [keyValue] as columnName(lowercase) → text value;
+     *  null when the row does not exist or the identifiers cannot be queried safely. */
+    fun selectRowByKey(table: String, keyColumn: String, keyValue: String): Map<String, String?>? = null
 }
 
 data class SequenceInfo(val name: String, val incrementBy: Long?, val lastNumber: Long?)
