@@ -35,7 +35,7 @@ class LiquibaseSettingsConfigurable(private val project: Project) : Configurable
     private val dbUrl = JBTextField()
     private val dbUser = JBTextField()
     private val dbPassword = JBPasswordField()
-    private val dbSchema = JBTextField("public", 12)
+    private val dbSchema = JBTextField("", 12)
     private val dbDriverJar = TextFieldWithBrowseButton()
     private val driverStatus = com.intellij.ui.components.JBLabel()
 

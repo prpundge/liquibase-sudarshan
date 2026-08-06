@@ -29,7 +29,8 @@ class LiquibaseSettings : PersistentStateComponent<LiquibaseSettings.State> {
         var dbValidationEnabled: Boolean = false
         var dbUrl: String = ""
         var dbUser: String = ""
-        var dbSchema: String = "public"
+        // empty = driver default: PostgreSQL falls back to 'public', Oracle to the user
+        var dbSchema: String = ""
         /** Optional custom JDBC driver JAR (air-gapped setups); empty = on-demand download. */
         var dbDriverJarPath: String = ""
 

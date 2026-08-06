@@ -12,6 +12,14 @@ import java.sql.SQLException
 import java.util.Properties
 
 /**
+ * Oracle owner scope for metadata queries. `PUBLIC` can never own user tables (it is a
+ * reserved Oracle role), so a leftover PostgreSQL-style `public` schema setting must not
+ * be taken literally — it falls back to the connecting user, like an empty field does.
+ */
+internal fun oracleOwnerOf(config: DatabaseConfig): String =
+    config.schemaName.takeUnless { it.isBlank() || it.equals("public", ignoreCase = true) } ?: config.user
+
+/**
  * JDBC implementation for PostgreSQL and Oracle. Drivers are instantiated directly
  * (DriverManager is unreliable across plugin classloaders) and every connection is opened
  * read-only. Only SELECT/metadata statements are ever issued.
@@ -63,9 +71,12 @@ private class JdbcSession(
 
     private val identifier = Regex("^[A-Za-z_][A-Za-z0-9_$#]*$")
 
-    /** Validated schema/owner prefix; blank config → the connection's default namespace. */
+    /** Validated schema/owner prefix; blank config → the connection's default namespace.
+     *  On Oracle a leftover PostgreSQL-style 'public' is never a real owner — ignore it. */
     private val schemaPrefix: String? =
-        config.schemaName.trim().takeIf { it.isNotBlank() && identifier.matches(it) }
+        config.schemaName.trim()
+            .takeIf { it.isNotBlank() && identifier.matches(it) }
+            ?.takeUnless { oracle && it.equals("public", ignoreCase = true) }
 
     private fun qualify(table: String): String = schemaPrefix?.let { "$it.$table" } ?: table
 
@@ -115,7 +126,7 @@ private class JdbcSession(
     override fun sequences(): List<SequenceInfo> = try {
         val result = mutableListOf<SequenceInfo>()
         if (oracle) {
-            val owner = config.schemaName.ifBlank { config.user }.uppercase()
+            val owner = oracleOwnerOf(config).uppercase()
             connection.prepareStatement(
                 "SELECT sequence_name, increment_by, last_number FROM all_sequences WHERE sequence_owner = ? ORDER BY sequence_name",
             ).use { statement ->
@@ -156,7 +167,7 @@ private class JdbcSession(
         } else {
             "SELECT table_name FROM information_schema.views WHERE table_schema = ? ORDER BY table_name"
         }
-        val scope = if (oracle) config.schemaName.ifBlank { config.user }.uppercase() else config.schemaName.ifBlank { "public" }
+        val scope = if (oracle) oracleOwnerOf(config).uppercase() else config.schemaName.ifBlank { "public" }
         connection.prepareStatement(sql).use { statement ->
             statement.queryTimeout = config.queryTimeoutSeconds
             statement.setString(1, scope)
@@ -170,7 +181,7 @@ private class JdbcSession(
     override fun indexes(): Map<String, List<IndexInfo>> = try {
         val result = LinkedHashMap<String, MutableList<IndexInfo>>()
         if (oracle) {
-            val owner = config.schemaName.ifBlank { config.user }.uppercase()
+            val owner = oracleOwnerOf(config).uppercase()
             connection.prepareStatement(
                 """
                 SELECT i.table_name, i.index_name, i.uniqueness, ic.column_name
@@ -398,7 +409,7 @@ private object PostgresMetadata {
 private object OracleMetadata {
 
     fun fetchTables(connection: Connection, config: DatabaseConfig): Map<String, TableSchema> {
-        val owner = config.schemaName.ifBlank { config.user }.uppercase()
+        val owner = oracleOwnerOf(config).uppercase()
         val columnsByTable = LinkedHashMap<String, MutableList<ColumnSchema>>()
         connection.prepareStatement(
             """
