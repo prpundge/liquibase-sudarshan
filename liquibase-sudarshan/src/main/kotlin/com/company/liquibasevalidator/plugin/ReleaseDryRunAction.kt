@@ -201,6 +201,7 @@ class ReleaseDryRunAction : AnAction() {
 
             val tabs = JBTabbedPane()
             tabs.addTab("Data comparison (${result.comparisons.size} rows)", comparisonTable())
+            tabs.addTab("Table differences (${result.tableDiffs.size})", tableDiffTable())
             tabs.addTab("Execution plan (${result.plan.size})", planTable())
             tabs.addTab("Findings (${result.findings.size})", findingsTable())
             panel.add(tabs, BorderLayout.CENTER)
@@ -263,6 +264,44 @@ class ReleaseDryRunAction : AnAction() {
             ReleaseDryRun.RowFate.CONFLICT -> "CONFLICT (key exists — INSERT fails)"
             ReleaseDryRun.RowFate.SKIP -> "SKIP (already released)"
             ReleaseDryRun.RowFate.UNKNOWN -> "UNKNOWN (cannot probe)"
+        }
+
+        /** Every table on either side: status, column-level deltas, row count and impact. */
+        private fun tableDiffTable(): JComponent {
+            val model = readOnlyModel(
+                arrayOf("Table", "Status", "Column", "Branch", "Database", "This release"),
+            )
+            for (diff in result.tableDiffs) {
+                val status = when (diff.status) {
+                    ReleaseDryRun.TableStatus.NEW -> "NEW — created by this release"
+                    ReleaseDryRun.TableStatus.DATABASE_ONLY -> "database only — not in branch DDL"
+                    ReleaseDryRun.TableStatus.MATCH -> "match"
+                    ReleaseDryRun.TableStatus.DIFFERENT -> "DIFFERENT — ${diff.deltas.size} column difference(s)"
+                }
+                val impact = diff.rowImpact
+                val impactText = buildList {
+                    if (impact.inserts > 0) add("${impact.inserts} insert")
+                    if (impact.updates > 0) add("${impact.updates} update")
+                    if (impact.same > 0) add("${impact.same} same")
+                    if (impact.conflicts > 0) add("${impact.conflicts} CONFLICT")
+                    if (impact.skips > 0) add("${impact.skips} skip")
+                    if (impact.unknown > 0) add("${impact.unknown} unknown")
+                }.joinToString(" / ").ifEmpty { "no data changes" }
+                val countText = diff.databaseRowCount?.let { "$it row(s) in DB · " } ?: ""
+                model.addRow(arrayOf(diff.tableName, status, "", "", "", "$countText$impactText"))
+                for (delta in diff.deltas) {
+                    val kind = when (delta.kind) {
+                        ReleaseDryRun.DeltaKind.MISSING_IN_DATABASE -> "missing in database"
+                        ReleaseDryRun.DeltaKind.DATABASE_ONLY -> "only in database"
+                        ReleaseDryRun.DeltaKind.TYPE -> "type differs"
+                        ReleaseDryRun.DeltaKind.NULLABILITY -> "nullability differs"
+                    }
+                    model.addRow(
+                        arrayOf("", "", delta.column, delta.branchValue ?: "—", delta.databaseValue ?: "—", kind),
+                    )
+                }
+            }
+            return JBScrollPane(JBTable(model))
         }
 
         private fun planTable(): JComponent {

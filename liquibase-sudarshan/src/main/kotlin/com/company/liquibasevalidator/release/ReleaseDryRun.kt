@@ -65,12 +65,55 @@ class ReleaseDryRun(
         val changedColumns: Int get() = diffs.count { it.changed }
     }
 
+    // ---------------------------------------------------------------------------------------
+    // Per-table difference: branch DDL vs the live database — for EVERY table on either side.
+    // ---------------------------------------------------------------------------------------
+
+    enum class TableStatus {
+        /** Defined by the branch, absent in the database — this release creates it. */
+        NEW,
+        /** Exists in the database but the branch DDL does not define it (drift). */
+        DATABASE_ONLY,
+        /** Same columns, types and nullability on both sides. */
+        MATCH,
+        /** Present on both sides with column-level differences (see the deltas). */
+        DIFFERENT,
+    }
+
+    enum class DeltaKind { MISSING_IN_DATABASE, DATABASE_ONLY, TYPE, NULLABILITY }
+
+    data class ColumnDelta(
+        val column: String,
+        val kind: DeltaKind,
+        val branchValue: String?,
+        val databaseValue: String?,
+    )
+
+    /** What this release's statically-known rows do to one table. */
+    data class RowImpact(
+        val inserts: Int, val updates: Int, val same: Int,
+        val conflicts: Int, val skips: Int, val unknown: Int,
+    ) {
+        val total: Int get() = inserts + updates + same + conflicts + skips + unknown
+    }
+
+    data class TableDiff(
+        val tableName: String,
+        val status: TableStatus,
+        val deltas: List<ColumnDelta>,
+        /** Current row count in the database; null when absent or not countable. */
+        val databaseRowCount: Long?,
+        val rowImpact: RowImpact,
+    )
+
     data class Result(
         val country: String,
         val environment: String,
         val manifest: List<ManifestEntry>,
         val plan: List<LiquibaseDryRun.PlanStep>,
         val comparisons: List<RowComparison>,
+        /** One entry for EVERY table in the branch DDL or the database, sorted by name. */
+        val tableDiffs: List<TableDiff>,
         val findings: List<LiquibaseDryRun.Finding>,
         val pending: List<LiquibaseDryRun.PendingChangeset>,
         /** False when DATABASECHANGELOG does not exist (fresh database). */
@@ -91,7 +134,7 @@ class ReleaseDryRun(
         val repoTables = HashMap<String, TableSchema>()
         for ((entry, text) in texts) {
             for (create in SqlParser.parse(text).statementsOf<CreateTableStatement>()) {
-                if (!create.temporary && create.tableNameLower !in liveTables) {
+                if (!create.temporary && create.tableNameLower !in repoTables) {
                     repoTables[create.tableNameLower] =
                         DdlSchemaBuilder.toTableSchema(create, entry.path.toString())
                 }
@@ -110,16 +153,91 @@ class ReleaseDryRun(
             provider,
         )
 
-        val comparisons = connector.withSession { session ->
+        val (comparisons, rowCounts) = connector.withSession { session ->
             val executed = session.executedChangesets()
-            analyzed.flatMap { (_, fileId, analysis) ->
+            val rows = analyzed.flatMap { (_, fileId, analysis) ->
                 compareFile(fileId, analysis, provider, session, executed)
             }
+            val counts = liveTables.keys.associateWith { table ->
+                try {
+                    session.rowCount(table)
+                } catch (_: SQLException) {
+                    null
+                }
+            }
+            rows to counts
         }
 
         return Result(
             country, environment, manifest, dryRun.plan, comparisons,
+            diffTables(repoTables, liveTables, comparisons, rowCounts),
             dryRun.findings, dryRun.pending, dryRun.changelogTableFound, dryRun.notes,
+        )
+    }
+
+    // ---------------------------------------------------------------------------------------
+
+    private fun diffTables(
+        repoTables: Map<String, TableSchema>,
+        liveTables: Map<String, TableSchema>,
+        comparisons: List<RowComparison>,
+        rowCounts: Map<String, Long?>,
+    ): List<TableDiff> = (repoTables.keys + liveTables.keys).toSortedSet().map { name ->
+        val repo = repoTables[name]
+        val live = liveTables[name]
+        val impact = rowImpactFor(comparisons, name)
+        when {
+            live == null -> TableDiff(name, TableStatus.NEW, emptyList(), null, impact)
+            repo == null -> TableDiff(name, TableStatus.DATABASE_ONLY, emptyList(), rowCounts[name], impact)
+            else -> {
+                val deltas = columnDeltas(repo, live)
+                TableDiff(
+                    name, if (deltas.isEmpty()) TableStatus.MATCH else TableStatus.DIFFERENT,
+                    deltas, rowCounts[name], impact,
+                )
+            }
+        }
+    }
+
+    private fun columnDeltas(repo: TableSchema, live: TableSchema): List<ColumnDelta> {
+        val deltas = mutableListOf<ColumnDelta>()
+        for (column in repo.columns) {
+            val liveColumn = live.findColumn(column.name)
+            if (liveColumn == null) {
+                deltas += ColumnDelta(column.nameLower, DeltaKind.MISSING_IN_DATABASE, column.dataType.display(), null)
+                continue
+            }
+            if (!column.dataType.display().equals(liveColumn.dataType.display(), ignoreCase = true)) {
+                deltas += ColumnDelta(
+                    column.nameLower, DeltaKind.TYPE,
+                    column.dataType.display(), liveColumn.dataType.display(),
+                )
+            }
+            if (column.nullable != liveColumn.nullable) {
+                deltas += ColumnDelta(
+                    column.nameLower, DeltaKind.NULLABILITY,
+                    if (column.nullable) "NULL" else "NOT NULL",
+                    if (liveColumn.nullable) "NULL" else "NOT NULL",
+                )
+            }
+        }
+        for (liveColumn in live.columns) {
+            if (repo.findColumn(liveColumn.name) == null) {
+                deltas += ColumnDelta(liveColumn.nameLower, DeltaKind.DATABASE_ONLY, null, liveColumn.dataType.display())
+            }
+        }
+        return deltas
+    }
+
+    private fun rowImpactFor(comparisons: List<RowComparison>, table: String): RowImpact {
+        val rows = comparisons.filter { it.tableName.lowercase() == table }
+        return RowImpact(
+            inserts = rows.count { it.fate == RowFate.INSERT },
+            updates = rows.count { it.fate == RowFate.UPDATE },
+            same = rows.count { it.fate == RowFate.SAME },
+            conflicts = rows.count { it.fate == RowFate.CONFLICT },
+            skips = rows.count { it.fate == RowFate.SKIP },
+            unknown = rows.count { it.fate == RowFate.UNKNOWN },
         )
     }
 

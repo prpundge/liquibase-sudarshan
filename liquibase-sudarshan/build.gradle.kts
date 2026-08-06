@@ -10,7 +10,7 @@ plugins {
 }
 
 group = "com.company.liquibasevalidator"
-version = "0.2.4"
+version = "0.2.5"
 
 repositories {
     mavenCentral()
@@ -93,6 +93,11 @@ intellijPlatform {
         name = "Liquibase Sudarshan - SQL & Data Validator"
         version = project.version.toString()
         changeNotes = """
+            <b>0.2.5</b> — Release Dry Run gains a <i>Table differences</i> tab covering EVERY
+            table on either side: NEW (created by this release), database-only (drift), match,
+            or different — with column-level deltas (type, nullability, missing/extra columns),
+            the live row count per table, and this release's data impact
+            (inserts/updates/same/conflicts/skips).<br/>
             <b>0.2.4</b> — Bitbucket review simplified per user feedback: no branch scanning
             or PR auto-detection — paste the PR link and exactly that PR is reviewed. The
             connection stays remembered (token in the IDE credential store, auto-filled per
