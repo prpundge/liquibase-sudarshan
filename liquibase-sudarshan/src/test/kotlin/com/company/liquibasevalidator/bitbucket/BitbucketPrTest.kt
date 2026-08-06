@@ -131,9 +131,12 @@ class BitbucketPrTest {
     }
 
     @Test
-    fun `remote repo builds a pr ref`() {
-        val ref = BitbucketPr.parseRemote("git@bitbucket.org:myws/db-repo.git")!!.toPrRef(7)
-        assertEquals("https://api.bitbucket.org/2.0/repositories/myws/db-repo/pullrequests/7", ref.apiBase)
+    fun `credential host of a pr ref`() {
+        assertEquals("bitbucket.org", BitbucketPr.hostOf(BitbucketPr.parse("https://bitbucket.org/w/r/pull-requests/1")!!))
+        assertEquals(
+            "git.corp.com",
+            BitbucketPr.hostOf(BitbucketPr.parse("https://git.corp.com/stash/projects/DB/repos/s/pull-requests/2")!!),
+        )
     }
 
     @Test
@@ -150,36 +153,6 @@ class BitbucketPrTest {
         val remote = BitbucketPr.remoteFromGitConfig(config)!!
         assertEquals("scripts", remote.repo)
         assertNull(BitbucketPr.remoteFromGitConfig("[core]\n bare = false"))
-    }
-
-    @Test
-    fun `reads the branch from git HEAD, null when detached`() {
-        assertEquals("feature/db-123", BitbucketPr.branchFromGitHead("ref: refs/heads/feature/db-123\n"))
-        assertNull(BitbucketPr.branchFromGitHead("1ab5814abcdef1234567890"))
-    }
-
-    @Test
-    fun `open pr search urls for both kinds`() {
-        val cloud = BitbucketPr.parseRemote("git@bitbucket.org:myws/db-repo.git")!!
-        assertEquals(
-            "https://api.bitbucket.org/2.0/repositories/myws/db-repo/pullrequests?state=OPEN" +
-                "&q=source.branch.name%3D%22feature%2Fx%22",
-            BitbucketPr.openPrSearchUrl(cloud, "feature/x"),
-        )
-        val server = BitbucketPr.parseRemote("https://git.corp.com/scm/db/scripts.git")!!
-        assertEquals(
-            "https://git.corp.com/rest/api/1.0/projects/db/repos/scripts/pull-requests?state=OPEN" +
-                "&direction=OUTGOING&at=refs%2Fheads%2Ffeature%2Fx",
-            BitbucketPr.openPrSearchUrl(server, "feature/x"),
-        )
-    }
-
-    @Test
-    fun `extracts the first open pr id from a search response`() {
-        assertEquals(42L, BitbucketPr.firstOpenPrId("""{"size":1,"values":[{"id":42,"title":"x"}]}"""))
-        assertNull(BitbucketPr.firstOpenPrId("""{"size":0,"values":[]}"""))
-        // ids OUTSIDE the values array must not match
-        assertNull(BitbucketPr.firstOpenPrId("""{"id":9,"values":[]}"""))
     }
 
     @Test

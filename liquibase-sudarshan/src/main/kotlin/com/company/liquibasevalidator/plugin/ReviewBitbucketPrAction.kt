@@ -21,11 +21,9 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.progress.ProgressIndicator
-import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
-import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.ValidationInfo
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.ToolWindowManager
@@ -34,12 +32,9 @@ import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPasswordField
 import com.intellij.util.ui.FormBuilder
 import com.intellij.util.ui.JBUI
-import java.awt.BorderLayout
 import java.nio.file.Files
 import java.nio.file.Paths
-import javax.swing.JButton
 import javax.swing.JComponent
-import javax.swing.JPanel
 import javax.swing.JTextField
 
 /**
@@ -67,14 +62,9 @@ class ReviewBitbucketPrAction : AnAction() {
         val auth = if (token.isBlank()) null else BitbucketPr.authHeader(dialog.user(), token)
         if (token.isNotBlank()) {
             // "already connected" from now on: next review prefills these
-            BitbucketTokenStore.save(hostOf(ref), dialog.user(), token)
+            BitbucketTokenStore.save(BitbucketPr.hostOf(ref), dialog.user(), token)
         }
         runReview(project, ref, auth, dialog.post())
-    }
-
-    private fun hostOf(ref: BitbucketPr.PrRef): String = when (ref.kind) {
-        BitbucketPr.Kind.CLOUD -> "bitbucket.org"
-        BitbucketPr.Kind.SERVER -> ref.serverBase.substringAfter("://").substringBefore('/')
     }
 
     // ---------------------------------------------------------------------------------------
@@ -249,59 +239,71 @@ class ReviewBitbucketPrAction : AnAction() {
     }
 
     // ---------------------------------------------------------------------------------------
-    // Dialog: everything prefilled from the git remote + the IDE credential store.
+    // Dialog: the user pastes ONE PR URL — exactly that PR is reviewed. The stored token
+    // for the URL's host fills in automatically ("already connected").
     // ---------------------------------------------------------------------------------------
 
     private class PrDialog(private val project: Project) : DialogWrapper(project, false) {
-
-        private val remote: BitbucketPr.RemoteRepo?
-        private val branch: String?
 
         private val urlField = JTextField("", 44)
         private val userField = JTextField("", 20)
         private val tokenField = JBPasswordField()
         private val postBox = JBCheckBox("Post the review to the PR (otherwise preview in the tool window only)")
-        private val detectButton = JButton("Detect Open PR")
+        private var credentialsAutoFilled = false
 
         init {
-            val base = project.basePath?.let { Paths.get(it) }
-            remote = base?.resolve(".git/config")
+            // prefill from the project's Bitbucket host if we already hold its token;
+            // pasting a URL for another host swaps in that host's stored token below
+            val remoteHost = project.basePath?.let { Paths.get(it).resolve(".git/config") }
                 ?.takeIf { Files.isRegularFile(it) }
-                ?.let { BitbucketPr.remoteFromGitConfig(Files.readString(it)) }
-            branch = base?.resolve(".git/HEAD")
-                ?.takeIf { Files.isRegularFile(it) }
-                ?.let { BitbucketPr.branchFromGitHead(Files.readString(it)) }
-
-            // stored connection first, environment as fallback
-            val stored = remote?.let { BitbucketTokenStore.load(it.host) }
-            userField.text = stored?.first ?: System.getenv("BITBUCKET_USER").orEmpty()
-            tokenField.text = stored?.second ?: System.getenv("BITBUCKET_TOKEN").orEmpty()
+                ?.let { BitbucketPr.remoteFromGitConfig(Files.readString(it)) }?.host
+            prefillCredentials(remoteHost)
+            urlField.document.addDocumentListener(object : javax.swing.event.DocumentListener {
+                override fun insertUpdate(e: javax.swing.event.DocumentEvent) = onUrlChanged()
+                override fun removeUpdate(e: javax.swing.event.DocumentEvent) = onUrlChanged()
+                override fun changedUpdate(e: javax.swing.event.DocumentEvent) = onUrlChanged()
+            })
 
             title = "Review Bitbucket Pull Request"
             setOKButtonText("Review")
-            detectButton.isEnabled = remote != null && branch != null
-            detectButton.addActionListener { detectOpenPr() }
             init()
         }
 
-        override fun createCenterPanel(): JComponent {
-            val urlRow = JPanel(BorderLayout(JBUI.scale(6), 0))
-            urlRow.add(urlField, BorderLayout.CENTER)
-            urlRow.add(detectButton, BorderLayout.EAST)
-
-            val state = LiquibaseSettings.getInstance(project).state
-            val connectionHint = when {
-                remote == null -> "No Bitbucket remote detected in this project's git config."
-                branch == null -> "Bitbucket remote ${remote.owner}/${remote.repo} detected (detached HEAD)."
-                else -> "Connected: ${remote.owner}/${remote.repo} @ branch '$branch'."
+        private fun prefillCredentials(host: String?) {
+            val stored = host?.let { BitbucketTokenStore.load(it) }
+            if (stored != null) {
+                userField.text = stored.first
+                tokenField.text = stored.second
+                credentialsAutoFilled = true
+            } else if (String(tokenField.password).isBlank()) {
+                userField.text = System.getenv("BITBUCKET_USER").orEmpty()
+                tokenField.text = System.getenv("BITBUCKET_TOKEN").orEmpty()
+                credentialsAutoFilled = tokenField.password.isNotEmpty()
             }
+        }
+
+        /** A pasted URL for a different Bitbucket host loads that host's remembered token. */
+        private fun onUrlChanged() {
+            val ref = BitbucketPr.parse(urlField.text) ?: return
+            if (credentialsAutoFilled || String(tokenField.password).isBlank()) {
+                prefillCredentials(BitbucketPr.hostOf(ref))
+            }
+        }
+
+        override fun createCenterPanel(): JComponent {
+            val state = LiquibaseSettings.getInstance(project).state
             val datasourceHint = if (state.dbValidationEnabled && state.dbUrl.isNotBlank()) {
                 "Datasource: ${state.dbUrl} — the review includes read-only live checks and per-table row counts."
             } else {
                 "No datasource configured — static review only (Settings | Tools | Liquibase Sudarshan)."
             }
+            val connectionHint = if (credentialsAutoFilled) {
+                "Connected — token remembered from a previous review; only the PR you paste is reviewed."
+            } else {
+                "Enter the token once — it is remembered in the IDE credential store."
+            }
             return FormBuilder.createFormBuilder()
-                .addLabeledComponent("Pull-request URL:", urlRow)
+                .addLabeledComponent("Pull-request URL:", urlField)
                 .addLabeledComponent("User (Cloud app password):", userField)
                 .addLabeledComponent("Token / app password:", tokenField)
                 .addComponent(postBox)
@@ -314,43 +316,9 @@ class ReviewBitbucketPrAction : AnAction() {
             foreground = JBUI.CurrentTheme.ContextHelp.FOREGROUND
         }
 
-        /** Finds the open PR whose source branch is the checked-out branch and fills the URL. */
-        private fun detectOpenPr() {
-            val repo = remote ?: return
-            val currentBranch = branch ?: return
-            val token = String(tokenField.password)
-            val auth = if (token.isBlank()) null else BitbucketPr.authHeader(userField.text.trim(), token)
-            var prId: Long? = null
-            var error: String? = null
-            ProgressManager.getInstance().runProcessWithProgressSynchronously(
-                {
-                    try {
-                        val json = BitbucketClient(auth).getText(BitbucketPr.openPrSearchUrl(repo, currentBranch))
-                        prId = BitbucketPr.firstOpenPrId(json)
-                    } catch (ex: Exception) {
-                        error = ex.message ?: ex.javaClass.simpleName
-                    }
-                },
-                "Searching the open PR for '$currentBranch'...", true, project,
-            )
-            val id = prId
-            when {
-                error != null -> Messages.showErrorDialog(project, error, "Bitbucket")
-                id == null -> Messages.showInfoMessage(
-                    project, "No open pull request found for branch '$currentBranch'.", "Bitbucket",
-                )
-                else -> urlField.text = when (repo.kind) {
-                    BitbucketPr.Kind.CLOUD ->
-                        "https://bitbucket.org/${repo.owner}/${repo.repo}/pull-requests/$id"
-                    BitbucketPr.Kind.SERVER ->
-                        "${repo.serverBase}/projects/${repo.owner}/repos/${repo.repo}/pull-requests/$id"
-                }
-            }
-        }
-
         override fun doValidate(): ValidationInfo? =
             if (BitbucketPr.parse(urlField.text) == null) {
-                ValidationInfo("Not a recognizable Bitbucket pull-request URL (use Detect Open PR or paste the link)", urlField)
+                ValidationInfo("Paste a Bitbucket pull-request link (bitbucket.org/… or https://host/projects/…/pull-requests/N)", urlField)
             } else {
                 null
             }

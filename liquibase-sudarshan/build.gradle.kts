@@ -10,7 +10,7 @@ plugins {
 }
 
 group = "com.company.liquibasevalidator"
-version = "0.2.3"
+version = "0.2.4"
 
 repositories {
     mavenCentral()
@@ -93,6 +93,10 @@ intellijPlatform {
         name = "Liquibase Sudarshan - SQL & Data Validator"
         version = project.version.toString()
         changeNotes = """
+            <b>0.2.4</b> — Bitbucket review simplified per user feedback: no branch scanning
+            or PR auto-detection — paste the PR link and exactly that PR is reviewed. The
+            connection stays remembered (token in the IDE credential store, auto-filled per
+            Bitbucket host, including when pasting a URL for a different host).<br/>
             <b>0.2.3</b> — Oracle datasource fix: the schema field's old default 'public'
             (a PostgreSQL notion) made Oracle connections show 0 tables and miss
             DATABASECHANGELOG. The default is now empty, and on Oracle a leftover 'public'

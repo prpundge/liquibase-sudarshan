@@ -108,8 +108,9 @@ object BitbucketPr {
     }
 
     // ---------------------------------------------------------------------------------------
-    // "Already connected": derive the repository from the checked-out git remote and find
-    // the open PR of the current branch — so the review needs zero copy-pasting.
+    // "Already connected": the stored token is keyed by Bitbucket host — derived from the
+    // project's git remote (for prefilling) or from the pasted PR URL. The review itself
+    // always runs on exactly the PR the user provides.
     // ---------------------------------------------------------------------------------------
 
     /** A Bitbucket repository derived from a git remote URL. */
@@ -120,8 +121,12 @@ object BitbucketPr {
                 Kind.CLOUD -> "bitbucket.org"
                 Kind.SERVER -> serverBase.substringAfter("://").substringBefore('/')
             }
+    }
 
-        fun toPrRef(id: Long): PrRef = PrRef(kind, owner, repo, id, serverBase)
+    /** Host a PR reference's credentials are stored under. */
+    fun hostOf(ref: PrRef): String = when (ref.kind) {
+        Kind.CLOUD -> "bitbucket.org"
+        Kind.SERVER -> ref.serverBase.substringAfter("://").substringBefore('/')
     }
 
     private val cloudSsh = Regex("^git@bitbucket\\.org:([^/]+)/(.+?)(?:\\.git)?$")
@@ -150,27 +155,4 @@ object BitbucketPr {
         Regex("""url\s*=\s*(\S+)""").findAll(gitConfigText)
             .mapNotNull { parseRemote(it.groupValues[1]) }
             .firstOrNull()
-
-    /** Branch name from a plain `.git/HEAD` text; null when detached. */
-    fun branchFromGitHead(gitHeadText: String): String? =
-        gitHeadText.trim().removePrefix("ref: refs/heads/").takeIf { it != gitHeadText.trim() }
-
-    /** REST query returning the open PRs whose source branch is [branch]. */
-    fun openPrSearchUrl(remote: RemoteRepo, branch: String): String = when (remote.kind) {
-        Kind.CLOUD ->
-            "https://api.bitbucket.org/2.0/repositories/${remote.owner}/${remote.repo}/pullrequests" +
-                "?state=OPEN&q=" + urlEncode("source.branch.name=\"$branch\"")
-        Kind.SERVER ->
-            "${remote.serverBase}/rest/api/1.0/projects/${remote.owner}/repos/${remote.repo}/pull-requests" +
-                "?state=OPEN&direction=OUTGOING&at=" + urlEncode("refs/heads/$branch")
-    }
-
-    /** First PR id in a Cloud/Server search response ({"values":[{"id":N,…}]}); null if none. */
-    fun firstOpenPrId(searchResponseJson: String): Long? {
-        val values = searchResponseJson.substringAfter("\"values\"", "")
-        return Regex("\"id\"\\s*:\\s*(\\d+)").find(values)?.groupValues?.get(1)?.toLong()
-    }
-
-    private fun urlEncode(text: String): String =
-        java.net.URLEncoder.encode(text, Charsets.UTF_8.name())
 }
