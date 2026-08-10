@@ -10,7 +10,7 @@ plugins {
 }
 
 group = "com.company.liquibasevalidator"
-version = "0.2.5"
+version = "0.3.0"
 
 repositories {
     mavenCentral()
@@ -93,6 +93,13 @@ intellijPlatform {
         name = "Liquibase Sudarshan - SQL & Data Validator"
         version = project.version.toString()
         changeNotes = """
+            <b>0.3.0</b> — Validation now mirrors real execution: a missing statement
+            delimiter (';') is an <b>ERROR</b> — Liquibase would send both statements to the
+            database as one and the release would fail right there — instead of a warning.
+            Syntax/delimiter and DDL/schema checks are <b>strictly enforced</b> and cannot be
+            switched off; every other rule is a checkbox under Settings | Tools | Liquibase
+            Sudarshan | Validation rules. The same strict rules apply everywhere: editor,
+            repository report, release simulation/dry run, CLI/CI and Bitbucket PR review.<br/>
             <b>0.2.5</b> — Release Dry Run gains a <i>Table differences</i> tab covering EVERY
             table on either side: NEW (created by this release), database-only (drift), match,
             or different — with column-level deltas (type, nullability, missing/extra columns),

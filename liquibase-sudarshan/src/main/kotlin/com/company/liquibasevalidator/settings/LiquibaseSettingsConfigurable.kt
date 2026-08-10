@@ -39,6 +39,15 @@ class LiquibaseSettingsConfigurable(private val project: Project) : Configurable
     private val dbDriverJar = TextFieldWithBrowseButton()
     private val driverStatus = com.intellij.ui.components.JBLabel()
 
+    // STRICT rules — shown so the full rule set is visible in one place, but not
+    // uncheckable: execution fails on these, so validation must always fail too.
+    private val strictSyntax = JBCheckBox(
+        "SQL syntax & statement delimiters (missing ';' fails the release) — always enforced", true,
+    ).apply { isEnabled = false }
+    private val strictDdl = JBCheckBox(
+        "DDL / schema validation (unknown tables/columns, datatypes, lengths) — always enforced", true,
+    ).apply { isEnabled = false }
+
     private val varcharLength = JBCheckBox("Validate VARCHAR/CHAR length", true)
     private val numericRanges = JBCheckBox("Validate numeric ranges and DECIMAL precision/scale", true)
     private val nullConstraints = JBCheckBox("Validate NULL constraints", true)
@@ -112,7 +121,9 @@ class LiquibaseSettingsConfigurable(private val project: Project) : Configurable
                     add(downloadDriver)
                 },
             )
-            .addComponent(sectionLabel("Validations"))
+            .addComponent(sectionLabel("Validation rules"))
+            .addComponent(strictSyntax)
+            .addComponent(strictDdl)
             .addComponent(varcharLength)
             .addComponent(numericRanges)
             .addComponent(nullConstraints)

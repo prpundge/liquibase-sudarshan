@@ -54,6 +54,19 @@ class ValidationEngine(private val options: ValidationOptions = ValidationOption
         val script = SqlParser.parse(fileText)
         val liquibase = LiquibaseParser.parse(fileText)
 
+        // STRICT, never configurable: Liquibase splits the changeset body on the delimiter
+        // before sending it to the database. A missing ';' ships two statements as ONE and
+        // the release fails right there — validation must fail exactly where execution would.
+        for (note in script.parseNotes) {
+            sink.add(
+                Severity.ERROR, ProblemCategory.SYNTAX,
+                "Liquibase: ${note.message} — the database receives both statements as one " +
+                    "and the release FAILS at this point",
+                note.range,
+            )
+        }
+        validateDelimiters(sink, liquibase, script)
+
         if (options.validateLiquibaseStructure) {
             for (problem in liquibase.problems) {
                 val fixes = if (problem.fixRange != null && problem.fixReplacement != null) {
@@ -71,10 +84,6 @@ class ValidationEngine(private val options: ValidationOptions = ValidationOption
                     ProblemCategory.LIQUIBASE, problem.message, problem.range, fixes,
                 )
             }
-            for (note in script.parseNotes) {
-                sink.add(Severity.WARNING, ProblemCategory.SYNTAX, "Liquibase: ${note.message}", note.range)
-            }
-            validateDelimiters(sink, liquibase, script)
         }
 
         validateStatementKeywords(sink, script)

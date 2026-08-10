@@ -406,15 +406,40 @@ class ValidationEngineTest {
     // -------------------------------------------------------------------------------------
 
     @Test
-    fun `missing statement delimiter is a syntax warning and later statements still validate`() {
+    fun `missing statement delimiter is a syntax ERROR because execution fails there`() {
         val sql = """
             INSERT INTO account_type (code, name, active) VALUES ('A', 'a', TRUE)
             INSERT INTO account_type (code, name, active) VALUES ('THIS_IS_WAY_TOO_LONG_FOR_15', 'b', TRUE);
         """.trimIndent()
         val problems = validate(sql)
-        assertTrue(problems.any { it.category == ProblemCategory.SYNTAX && it.message.contains("missing statement delimiter") })
+        val delimiter = problems.single { it.category == ProblemCategory.SYNTAX && it.message.contains("missing statement delimiter") }
+        assertEquals(Severity.ERROR, delimiter.severity)
+        assertTrue(delimiter.message.contains("release FAILS"))
         // the second statement was still parsed and its oversized value still detected
         assertTrue(problems.errors().any { it.message.contains("length 27") })
+    }
+
+    @Test
+    fun `delimiter and syntax checks stay on even with every configurable rule off`() {
+        val strictOnly = ValidationOptions(
+            validateVarcharLength = false, validateNumericRanges = false,
+            validateNullConstraints = false, validateDuplicates = false,
+            validateMergeMappings = false, validateForeignKeys = false,
+            warnUnusedStagingColumns = false, tempTableNameHeuristic = false,
+            validateLiquibaseStructure = false,
+        )
+        val sql = """
+            INSERT INTO account_type (code, name, active) VALUES ('A', 'a', TRUE)
+            INSERT INTO account_type (code, name, active) VALUES ('B', 'b', TRUE);
+        """.trimIndent()
+        val problems = ValidationEngine(strictOnly).validate(sql, schema).problems
+        assertTrue(
+            problems.any {
+                it.severity == Severity.ERROR && it.category == ProblemCategory.SYNTAX &&
+                    it.message.contains("missing statement delimiter")
+            },
+            "strict syntax checking must not be disableable; got: $problems",
+        )
     }
 
     @Test
