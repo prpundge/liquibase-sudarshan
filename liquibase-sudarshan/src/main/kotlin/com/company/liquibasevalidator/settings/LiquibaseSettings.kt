@@ -44,6 +44,9 @@ class LiquibaseSettings : PersistentStateComponent<LiquibaseSettings.State> {
         var tempTableNameHeuristic: Boolean = true
         var validateLiquibaseStructure: Boolean = true
         var warnExplicitCommit: Boolean = true
+        var warnReplaceableWithoutRunOnChange: Boolean = true
+        var warnMixedDdlDml: Boolean = true
+        var requireChangesetComment: Boolean = true
         var treatEmptyStringAsNull: Boolean = false
 
         var validateBeforeCommit: Boolean = true
@@ -79,6 +82,9 @@ class LiquibaseSettings : PersistentStateComponent<LiquibaseSettings.State> {
         tempTableNameHeuristic = state.tempTableNameHeuristic,
         validateLiquibaseStructure = state.validateLiquibaseStructure,
         warnExplicitCommit = state.warnExplicitCommit,
+        warnReplaceableWithoutRunOnChange = state.warnReplaceableWithoutRunOnChange,
+        warnMixedDdlDml = state.warnMixedDdlDml,
+        requireChangesetComment = state.requireChangesetComment,
         treatEmptyStringAsNull = state.treatEmptyStringAsNull,
     )
 

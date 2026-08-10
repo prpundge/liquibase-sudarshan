@@ -48,6 +48,12 @@ data class ValidationOptions(
     val validateLiquibaseStructure: Boolean = true,
     /** Liquibase manages the transaction — explicit COMMIT/ROLLBACK in a changeset warns. */
     val warnExplicitCommit: Boolean = true,
+    /** Replaceable objects (CREATE OR REPLACE …) should carry runOnChange:true. */
+    val warnReplaceableWithoutRunOnChange: Boolean = true,
+    /** Non-staging DDL mixed with DML in one changeset (DDL auto-commits on Oracle). */
+    val warnMixedDdlDml: Boolean = true,
+    /** Every changeset should document its purpose with a --comment line. */
+    val requireChangesetComment: Boolean = true,
     /** Oracle semantics: an empty string literal '' is NULL and violates NOT NULL columns. */
     val treatEmptyStringAsNull: Boolean = false,
 )

@@ -58,6 +58,9 @@ class LiquibaseSettingsConfigurable(private val project: Project) : Configurable
     private val nameHeuristic = JBCheckBox("Map tmp_/temp_/stg_ staging tables by name when no MERGE exists", true)
     private val liquibaseStructure = JBCheckBox("Validate Liquibase changeset structure and rollbacks", true)
     private val explicitCommit = JBCheckBox("Warn about explicit COMMIT/ROLLBACK inside changesets (Liquibase manages the transaction)", true)
+    private val replaceableRunOnChange = JBCheckBox("Require runOnChange:true on CREATE OR REPLACE changesets", true)
+    private val mixedDdlDml = JBCheckBox("Warn when a changeset mixes DDL with DML (DDL auto-commits)", true)
+    private val changesetComment = JBCheckBox("Require a --comment on every changeset", true)
     private val emptyStringIsNull = JBCheckBox("Oracle: treat empty string '' as NULL (NOT NULL violations)", false)
     private val beforeCommit = JBCheckBox("Validate SQL files before commit", true)
     private val beforePush = JBCheckBox("Validate SQL files before push (includes database dry run when enabled)", true)
@@ -135,6 +138,9 @@ class LiquibaseSettingsConfigurable(private val project: Project) : Configurable
             .addComponent(nameHeuristic)
             .addComponent(liquibaseStructure)
             .addComponent(explicitCommit)
+            .addComponent(replaceableRunOnChange)
+            .addComponent(mixedDdlDml)
+            .addComponent(changesetComment)
             .addComponent(emptyStringIsNull)
             .addComponent(sectionLabel("Version control"))
             .addComponent(beforeCommit)
@@ -244,6 +250,9 @@ class LiquibaseSettingsConfigurable(private val project: Project) : Configurable
             nameHeuristic.isSelected != s.tempTableNameHeuristic ||
             liquibaseStructure.isSelected != s.validateLiquibaseStructure ||
             explicitCommit.isSelected != s.warnExplicitCommit ||
+            replaceableRunOnChange.isSelected != s.warnReplaceableWithoutRunOnChange ||
+            mixedDdlDml.isSelected != s.warnMixedDdlDml ||
+            changesetComment.isSelected != s.requireChangesetComment ||
             emptyStringIsNull.isSelected != s.treatEmptyStringAsNull ||
             beforeCommit.isSelected != s.validateBeforeCommit ||
             beforePush.isSelected != s.validateBeforePush
@@ -271,6 +280,9 @@ class LiquibaseSettingsConfigurable(private val project: Project) : Configurable
             s.tempTableNameHeuristic = nameHeuristic.isSelected
             s.validateLiquibaseStructure = liquibaseStructure.isSelected
             s.warnExplicitCommit = explicitCommit.isSelected
+            s.warnReplaceableWithoutRunOnChange = replaceableRunOnChange.isSelected
+            s.warnMixedDdlDml = mixedDdlDml.isSelected
+            s.requireChangesetComment = changesetComment.isSelected
             s.treatEmptyStringAsNull = emptyStringIsNull.isSelected
             s.validateBeforeCommit = beforeCommit.isSelected
             s.validateBeforePush = beforePush.isSelected
@@ -305,6 +317,9 @@ class LiquibaseSettingsConfigurable(private val project: Project) : Configurable
         nameHeuristic.isSelected = s.tempTableNameHeuristic
         liquibaseStructure.isSelected = s.validateLiquibaseStructure
         explicitCommit.isSelected = s.warnExplicitCommit
+        replaceableRunOnChange.isSelected = s.warnReplaceableWithoutRunOnChange
+        mixedDdlDml.isSelected = s.warnMixedDdlDml
+        changesetComment.isSelected = s.requireChangesetComment
         emptyStringIsNull.isSelected = s.treatEmptyStringAsNull
         beforeCommit.isSelected = s.validateBeforeCommit
         beforePush.isSelected = s.validateBeforePush

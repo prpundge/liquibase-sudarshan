@@ -475,6 +475,69 @@ class ValidationEngineTest {
     }
 
     @Test
+    fun `plsql object without endDelimiter is a strict error`() {
+        val sql = """
+            --liquibase formatted sql
+            --changeset team:pkg-1
+            --comment: package spec
+            CREATE OR REPLACE PACKAGE demo_pkg AS
+                PROCEDURE run;
+            END demo_pkg;
+            /
+        """.trimIndent()
+        assertTrue(validate(sql).errors().any { it.message.contains("no endDelimiter") })
+        val withDelimiter = sql.replace("--changeset team:pkg-1", "--changeset team:pkg-1 endDelimiter:/")
+        assertTrue(validate(withDelimiter).errors().none { it.message.contains("no endDelimiter") })
+        val notSplit = sql.replace("--changeset team:pkg-1", "--changeset team:pkg-1 splitStatements:false")
+        assertTrue(validate(notSplit).errors().none { it.message.contains("no endDelimiter") })
+    }
+
+    @Test
+    fun `create or replace without runOnChange warns and is configurable`() {
+        val sql = """
+            --liquibase formatted sql
+            --changeset team:view-1
+            --comment: reporting view
+            CREATE OR REPLACE VIEW v_account_types AS SELECT code FROM account_type;
+            --rollback DROP VIEW v_account_types;
+        """.trimIndent()
+        assertTrue(validate(sql).any { it.message.contains("no runOnChange:true") })
+        val good = sql.replace("--changeset team:view-1", "--changeset team:view-1 runOnChange:true")
+        assertTrue(validate(good).none { it.message.contains("no runOnChange:true") })
+        val off = validate(sql, ValidationOptions(warnReplaceableWithoutRunOnChange = false))
+        assertTrue(off.none { it.message.contains("no runOnChange:true") })
+    }
+
+    @Test
+    fun `ddl mixed with dml in one changeset warns and is configurable`() {
+        val sql = """
+            --liquibase formatted sql
+            --changeset team:mix-1
+            --comment: index plus data in one changeset
+            CREATE INDEX idx_at_name ON account_type (name);
+            INSERT INTO account_type (code, name, active) VALUES ('MIX', 'Mixed', TRUE);
+            --rollback DROP INDEX idx_at_name;
+        """.trimIndent()
+        assertTrue(validate(sql).any { it.message.contains("mixes DDL with DML") })
+        val off = validate(sql, ValidationOptions(warnMixedDdlDml = false))
+        assertTrue(off.none { it.message.contains("mixes DDL with DML") })
+    }
+
+    @Test
+    fun `changeset without comment gets a weak warning and is configurable`() {
+        val sql = """
+            --liquibase formatted sql
+            --changeset team:nc-1
+            INSERT INTO account_type (code, name, active) VALUES ('NC', 'n', TRUE);
+            --rollback DELETE FROM account_type WHERE code = 'NC';
+        """.trimIndent()
+        val problem = validate(sql).single { it.message.contains("has no --comment") }
+        assertEquals(Severity.WEAK_WARNING, problem.severity)
+        val off = validate(sql, ValidationOptions(requireChangesetComment = false))
+        assertTrue(off.none { it.message.contains("has no --comment") })
+    }
+
+    @Test
     fun `delimiter and syntax checks stay on even with every configurable rule off`() {
         val strictOnly = ValidationOptions(
             validateVarcharLength = false, validateNumericRanges = false,

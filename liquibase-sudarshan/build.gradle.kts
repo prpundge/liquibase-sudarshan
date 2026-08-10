@@ -10,7 +10,7 @@ plugins {
 }
 
 group = "com.company.liquibasevalidator"
-version = "0.3.1"
+version = "0.3.2"
 
 repositories {
     mavenCentral()
@@ -93,6 +93,14 @@ intellijPlatform {
         name = "Liquibase Sudarshan - SQL & Data Validator"
         version = project.version.toString()
         changeNotes = """
+            <b>0.3.2</b> — Four new rules from the Liquibase formatted-SQL practice guides:
+            a PL/SQL object (package/procedure/function/trigger/type) without
+            <code>endDelimiter</code> is a strict ERROR (Liquibase splits the block on every
+            inner ';' and the deployment fails); <code>CREATE OR REPLACE</code> without
+            <code>runOnChange:true</code> warns (a later edit fails with a checksum error);
+            non-staging DDL mixed with DML in one changeset warns (DDL auto-commits — a later
+            failure leaves the database half-changed); changesets without <code>--comment</code>
+            get a weak warning. The last three are checkboxes under Validation rules.<br/>
             <b>0.3.1</b> — Catches the real-world ORA-00933 shape: a missing ';' before
             <code>COMMIT</code>/<code>ROLLBACK</code> is now detected as a strict ERROR (the
             database receives "DELETE … COMMIT" as one statement and the deployment fails).

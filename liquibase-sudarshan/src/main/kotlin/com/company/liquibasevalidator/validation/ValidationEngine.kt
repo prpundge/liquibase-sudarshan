@@ -3,14 +3,19 @@ package com.company.liquibasevalidator.validation
 import com.company.liquibasevalidator.liquibase.LiquibaseFile
 import com.company.liquibasevalidator.liquibase.LiquibaseParser
 import com.company.liquibasevalidator.schema.SchemaProvider
+import com.company.liquibasevalidator.sql.AlterTableAddConstraint
+import com.company.liquibasevalidator.sql.CreateIndexStatement
 import com.company.liquibasevalidator.sql.CreateTableStatement
 import com.company.liquibasevalidator.sql.DeleteStatement
+import com.company.liquibasevalidator.sql.DropStatement
 import com.company.liquibasevalidator.sql.InsertStatement
 import com.company.liquibasevalidator.sql.MergeStatement
 import com.company.liquibasevalidator.sql.SqlParser
 import com.company.liquibasevalidator.sql.SqlScript
 import com.company.liquibasevalidator.sql.SrcRange
+import com.company.liquibasevalidator.sql.TruncateStatement
 import com.company.liquibasevalidator.sql.UnknownStatement
+import com.company.liquibasevalidator.sql.UpdateStatement
 
 /** Accumulates problems from all validators. */
 internal class ProblemSink {
@@ -91,6 +96,7 @@ class ValidationEngine(private val options: ValidationOptions = ValidationOption
         if (options.warnExplicitCommit) {
             warnTransactionControl(sink, liquibase, script)
         }
+        validateChangesetPractices(sink, liquibase, script, fileText)
 
         validateStatementKeywords(sink, script)
         DdlValidator(options, sink).validate(fileText, script, schema)
@@ -143,6 +149,94 @@ class ValidationEngine(private val options: ValidationOptions = ValidationOption
 
         return ValidationResult(sink.problems(), FileAnalysis(script, liquibase, flows, directInserts))
     }
+
+    /**
+     * Changeset-practice rules from the Liquibase formatted-SQL reference:
+     * - PL/SQL objects need `endDelimiter` (or `splitStatements:false`) — STRICT: without
+     *   it Liquibase splits the block on every inner ';' and the deployment fails.
+     * - `CREATE OR REPLACE` objects should carry `runOnChange:true`, otherwise a later edit
+     *   fails with a checksum error instead of re-running.
+     * - Non-staging DDL mixed with DML in one changeset: DDL auto-commits (Oracle), leaving
+     *   the database half-changed when a later statement fails.
+     * - Every changeset should document its purpose with `--comment`.
+     */
+    private fun validateChangesetPractices(
+        sink: ProblemSink,
+        liquibase: LiquibaseFile,
+        script: SqlScript,
+        fileText: String,
+    ) {
+        for (changeset in liquibase.changesets) {
+            val body = fileText.substring(
+                changeset.bodyRange.start.coerceIn(0, fileText.length),
+                changeset.bodyRange.end.coerceIn(0, fileText.length),
+            )
+            val runsOnEdit = changeset.runOnChange || changeset.attributes["runalways"].equals("true", true)
+            val splitOff = changeset.attributes["splitstatements"].equals("false", true)
+
+            // strict: a split PL/SQL block is a guaranteed execution failure
+            if (PLSQL_OBJECT.containsMatchIn(body) &&
+                changeset.attributes["enddelimiter"] == null && !splitOff
+            ) {
+                sink.add(
+                    Severity.ERROR, ProblemCategory.SYNTAX,
+                    "Liquibase: changeset '${changeset.key}' creates a PL/SQL object but has no " +
+                        "endDelimiter — Liquibase splits the block on every inner ';' and the " +
+                        "deployment FAILS; add endDelimiter:/ (and terminate the block with /) " +
+                        "or splitStatements:false",
+                    changeset.headerRange,
+                )
+            }
+
+            if (options.warnReplaceableWithoutRunOnChange &&
+                REPLACEABLE_OBJECT.containsMatchIn(body) && !runsOnEdit
+            ) {
+                sink.add(
+                    Severity.WARNING, ProblemCategory.LIQUIBASE,
+                    "Liquibase: changeset '${changeset.key}' replaces an object (CREATE OR " +
+                        "REPLACE) but has no runOnChange:true — editing it later fails with a " +
+                        "checksum error instead of re-running the new code",
+                    changeset.headerRange,
+                )
+            }
+
+            if (options.warnMixedDdlDml) {
+                val statements = script.statements.filter {
+                    it.range.start >= changeset.bodyRange.start && it.range.start < changeset.bodyRange.end
+                }
+                val hasDdl = statements.any {
+                    (it is CreateTableStatement && !it.temporary) || it is AlterTableAddConstraint ||
+                        it is CreateIndexStatement || it is TruncateStatement ||
+                        (it is DropStatement && it.objectKind == "TABLE" && !looksLikeStagingName(it.nameLower))
+                }
+                val hasDml = statements.any {
+                    it is InsertStatement || it is MergeStatement || it is UpdateStatement || it is DeleteStatement
+                }
+                if (hasDdl && hasDml) {
+                    sink.add(
+                        Severity.WARNING, ProblemCategory.LIQUIBASE,
+                        "Liquibase: changeset '${changeset.key}' mixes DDL with DML — DDL " +
+                            "auto-commits (Oracle), so a later failing statement leaves the " +
+                            "database half-changed; split them into separate changesets",
+                        changeset.headerRange,
+                    )
+                }
+            }
+
+            if (options.requireChangesetComment && changeset.comment == null) {
+                sink.add(
+                    Severity.WEAK_WARNING, ProblemCategory.LIQUIBASE,
+                    "Liquibase: changeset '${changeset.key}' has no --comment — document why " +
+                        "this change exists",
+                    changeset.headerRange,
+                )
+            }
+        }
+    }
+
+    private fun looksLikeStagingName(nameLower: String): Boolean =
+        listOf("tmp_", "temp_", "stg_", "staging_").any { nameLower.startsWith(it) } ||
+            listOf("_tmp", "_temp", "_stg", "_staging").any { nameLower.endsWith(it) }
 
     /** Formatted-SQL rule: statements before the first `--changeset` are NEVER executed. */
     private fun validateChangesetCoverage(sink: ProblemSink, liquibase: LiquibaseFile, script: SqlScript) {
@@ -329,4 +423,16 @@ private val KNOWN_STATEMENT_WORDS = setOf(
 private val SUGGESTION_KEYWORDS = listOf(
     "INSERT", "MERGE", "CREATE", "UPDATE", "DELETE", "SELECT", "ALTER", "DROP",
     "TRUNCATE", "GRANT", "REVOKE", "COMMENT", "VALUES", "BEGIN", "DECLARE",
+)
+
+/** `CREATE OR REPLACE` objects — replaceable, so they want `runOnChange:true`. */
+private val REPLACEABLE_OBJECT = Regex(
+    """CREATE\s+OR\s+REPLACE\s+(?:FORCE\s+)?(?:EDITIONABLE\s+)?(?:VIEW|PACKAGE|PROCEDURE|FUNCTION|TRIGGER|TYPE)\b""",
+    RegexOption.IGNORE_CASE,
+)
+
+/** PL/SQL objects: their bodies contain inner ';' and need `endDelimiter` to survive splitting. */
+private val PLSQL_OBJECT = Regex(
+    """CREATE\s+(?:OR\s+REPLACE\s+)?(?:EDITIONABLE\s+)?(?:PACKAGE|PROCEDURE|FUNCTION|TRIGGER|TYPE)\b""",
+    RegexOption.IGNORE_CASE,
 )
