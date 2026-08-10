@@ -84,6 +84,12 @@ class ValidationEngine(private val options: ValidationOptions = ValidationOption
                     ProblemCategory.LIQUIBASE, problem.message, problem.range, fixes,
                 )
             }
+            validateChangesetCoverage(sink, liquibase, script)
+            validateNoOpRollbacks(sink, liquibase)
+        }
+
+        if (options.warnExplicitCommit) {
+            warnTransactionControl(sink, liquibase, script)
         }
 
         validateStatementKeywords(sink, script)
@@ -136,6 +142,62 @@ class ValidationEngine(private val options: ValidationOptions = ValidationOption
         validateRollbacks(sink, liquibase, tempTables, schema)
 
         return ValidationResult(sink.problems(), FileAnalysis(script, liquibase, flows, directInserts))
+    }
+
+    /** Formatted-SQL rule: statements before the first `--changeset` are NEVER executed. */
+    private fun validateChangesetCoverage(sink: ProblemSink, liquibase: LiquibaseFile, script: SqlScript) {
+        if (!liquibase.formatted) return
+        val firstHeader = liquibase.changesets.firstOrNull()?.headerRange?.start ?: return
+        for (statement in script.statements) {
+            if (statement.range.start < firstHeader) {
+                sink.add(
+                    Severity.WARNING, ProblemCategory.LIQUIBASE,
+                    "Liquibase: this statement appears BEFORE the first --changeset — Liquibase " +
+                        "never executes it, so it silently does nothing in any environment",
+                    statement.range,
+                )
+            }
+        }
+    }
+
+    /** A rollback that only contains COMMIT cannot undo anything (docs: use `--rollback empty`). */
+    private fun validateNoOpRollbacks(sink: ProblemSink, liquibase: LiquibaseFile) {
+        for (changeset in liquibase.changesets) {
+            val rollbacks = changeset.rollbacks
+            val allNoOp = rollbacks.isNotEmpty() && rollbacks.all {
+                val sql = it.sql.trim().trimEnd(';').trim()
+                sql.isEmpty() || sql.equals("commit", ignoreCase = true)
+            }
+            if (allNoOp) {
+                sink.add(
+                    Severity.WARNING, ProblemCategory.LIQUIBASE,
+                    "Liquibase: the rollback of changeset '${changeset.key}' only contains COMMIT — " +
+                        "it cannot undo the change; write real undo statements, or declare " +
+                        "'--rollback empty' if no rollback is intended",
+                    rollbacks.first().range,
+                )
+            }
+        }
+    }
+
+    /**
+     * Liquibase manages the transaction itself: an explicit COMMIT/ROLLBACK inside a
+     * changeset is unnecessary — and right after a missing delimiter it is exactly what
+     * turns into ORA-00933 ("SQL command not properly ended") at execution.
+     */
+    private fun warnTransactionControl(sink: ProblemSink, liquibase: LiquibaseFile, script: SqlScript) {
+        for (statement in script.statementsOf<UnknownStatement>()) {
+            val word = statement.leadingWord.uppercase()
+            if (word != "COMMIT" && word != "ROLLBACK") continue
+            if (liquibase.changesetAt(statement.range.start) == null) continue
+            sink.add(
+                Severity.WARNING, ProblemCategory.LIQUIBASE,
+                "Liquibase: explicit $word inside a changeset — Liquibase manages the " +
+                    "transaction itself; remove it (combined with a missing ';' it fails " +
+                    "the release with ORA-00933)",
+                statement.leadingRange,
+            )
+        }
     }
 
     /** Requirement: when schema cannot be resolved, say so once and skip — never guess. */

@@ -43,6 +43,7 @@ class LiquibaseSettings : PersistentStateComponent<LiquibaseSettings.State> {
         var warnUnusedStagingColumns: Boolean = true
         var tempTableNameHeuristic: Boolean = true
         var validateLiquibaseStructure: Boolean = true
+        var warnExplicitCommit: Boolean = true
         var treatEmptyStringAsNull: Boolean = false
 
         var validateBeforeCommit: Boolean = true
@@ -77,6 +78,7 @@ class LiquibaseSettings : PersistentStateComponent<LiquibaseSettings.State> {
         warnUnusedStagingColumns = state.warnUnusedStagingColumns,
         tempTableNameHeuristic = state.tempTableNameHeuristic,
         validateLiquibaseStructure = state.validateLiquibaseStructure,
+        warnExplicitCommit = state.warnExplicitCommit,
         treatEmptyStringAsNull = state.treatEmptyStringAsNull,
     )
 

@@ -28,6 +28,8 @@ class SqlParserBranchesTest {
             "TRUNCATE TABLE b;",
             "UPDATE b SET y = 2 WHERE y = 1;",
             "INSERT INTO b (y) VALUES (1);",
+            "COMMIT;",
+            "ROLLBACK;",
         )
         for (next in nextStatements) {
             val script = parse("CREATE TABLE a (x INTEGER)\n$next")

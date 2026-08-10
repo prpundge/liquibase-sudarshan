@@ -57,6 +57,7 @@ class LiquibaseSettingsConfigurable(private val project: Project) : Configurable
     private val unusedColumns = JBCheckBox("Warn about unused staging columns", true)
     private val nameHeuristic = JBCheckBox("Map tmp_/temp_/stg_ staging tables by name when no MERGE exists", true)
     private val liquibaseStructure = JBCheckBox("Validate Liquibase changeset structure and rollbacks", true)
+    private val explicitCommit = JBCheckBox("Warn about explicit COMMIT/ROLLBACK inside changesets (Liquibase manages the transaction)", true)
     private val emptyStringIsNull = JBCheckBox("Oracle: treat empty string '' as NULL (NOT NULL violations)", false)
     private val beforeCommit = JBCheckBox("Validate SQL files before commit", true)
     private val beforePush = JBCheckBox("Validate SQL files before push (includes database dry run when enabled)", true)
@@ -133,6 +134,7 @@ class LiquibaseSettingsConfigurable(private val project: Project) : Configurable
             .addComponent(unusedColumns)
             .addComponent(nameHeuristic)
             .addComponent(liquibaseStructure)
+            .addComponent(explicitCommit)
             .addComponent(emptyStringIsNull)
             .addComponent(sectionLabel("Version control"))
             .addComponent(beforeCommit)
@@ -241,6 +243,7 @@ class LiquibaseSettingsConfigurable(private val project: Project) : Configurable
             unusedColumns.isSelected != s.warnUnusedStagingColumns ||
             nameHeuristic.isSelected != s.tempTableNameHeuristic ||
             liquibaseStructure.isSelected != s.validateLiquibaseStructure ||
+            explicitCommit.isSelected != s.warnExplicitCommit ||
             emptyStringIsNull.isSelected != s.treatEmptyStringAsNull ||
             beforeCommit.isSelected != s.validateBeforeCommit ||
             beforePush.isSelected != s.validateBeforePush
@@ -267,6 +270,7 @@ class LiquibaseSettingsConfigurable(private val project: Project) : Configurable
             s.warnUnusedStagingColumns = unusedColumns.isSelected
             s.tempTableNameHeuristic = nameHeuristic.isSelected
             s.validateLiquibaseStructure = liquibaseStructure.isSelected
+            s.warnExplicitCommit = explicitCommit.isSelected
             s.treatEmptyStringAsNull = emptyStringIsNull.isSelected
             s.validateBeforeCommit = beforeCommit.isSelected
             s.validateBeforePush = beforePush.isSelected
@@ -300,6 +304,7 @@ class LiquibaseSettingsConfigurable(private val project: Project) : Configurable
         unusedColumns.isSelected = s.warnUnusedStagingColumns
         nameHeuristic.isSelected = s.tempTableNameHeuristic
         liquibaseStructure.isSelected = s.validateLiquibaseStructure
+        explicitCommit.isSelected = s.warnExplicitCommit
         emptyStringIsNull.isSelected = s.treatEmptyStringAsNull
         beforeCommit.isSelected = s.validateBeforeCommit
         beforePush.isSelected = s.validateBeforePush

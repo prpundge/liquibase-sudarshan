@@ -10,7 +10,7 @@ plugins {
 }
 
 group = "com.company.liquibasevalidator"
-version = "0.3.0"
+version = "0.3.1"
 
 repositories {
     mavenCentral()
@@ -93,6 +93,13 @@ intellijPlatform {
         name = "Liquibase Sudarshan - SQL & Data Validator"
         version = project.version.toString()
         changeNotes = """
+            <b>0.3.1</b> — Catches the real-world ORA-00933 shape: a missing ';' before
+            <code>COMMIT</code>/<code>ROLLBACK</code> is now detected as a strict ERROR (the
+            database receives "DELETE … COMMIT" as one statement and the deployment fails).
+            New rules from the Liquibase formatted-SQL reference: explicit COMMIT/ROLLBACK
+            inside a changeset warns (Liquibase manages the transaction; configurable),
+            statements before the first --changeset warn (Liquibase never executes them),
+            and a rollback containing only COMMIT warns (use '--rollback empty' instead).<br/>
             <b>0.3.0</b> — Validation now mirrors real execution: a missing statement
             delimiter (';') is an <b>ERROR</b> — Liquibase would send both statements to the
             database as one and the release would fail right there — instead of a warning.

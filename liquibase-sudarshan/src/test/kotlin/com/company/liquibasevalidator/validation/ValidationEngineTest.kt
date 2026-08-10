@@ -420,6 +420,61 @@ class ValidationEngineTest {
     }
 
     @Test
+    fun `the ORA-00933 production failure shape is caught end to end`() {
+        // real Jenkins failure: DELETE without ';' followed by COMMIT — Liquibase sent
+        // "DELETE … COMMIT" as ONE statement and Oracle rejected it with ORA-00933
+        val sql = """
+            --liquibase formatted sql
+            --changeset AES_SUBSCRIPTION_RESOURCE_FEATURES_CMP_DEL:16 context:AES_STATICDATA
+            --comment: AES_SUBSCRIPTION_RESOURCE_FEATURES SCRIPT RUN for AES
+            --preconditions onFail:CONTINUE onError:HALT
+            --precondition-sql-check expectedResult:1 select COUNT(*) from AES_SUBSCRIPTION_RESOURCE_FEATURES where SUBSCRIPTION_ID=168
+
+            DELETE FROM AES_SUBSCRIPTION_RESOURCE_FEATURES
+            WHERE
+            SUBSCRIPTION_ID IN (168)
+
+            COMMIT;
+
+            --rollback commit;
+        """.trimIndent()
+        val problems = validate(sql)
+        val delimiter = problems.errors().single { it.message.contains("missing statement delimiter") }
+        assertTrue(delimiter.message.contains("release FAILS"))
+        assertTrue(problems.any { it.message.contains("explicit COMMIT inside a changeset") })
+        assertTrue(problems.any { it.message.contains("only contains COMMIT") })
+    }
+
+    @Test
+    fun `sql before the first changeset is flagged as never executed`() {
+        val sql = """
+            --liquibase formatted sql
+            INSERT INTO account_type (code, name, active) VALUES ('X', 'x', TRUE);
+            --changeset team:1
+            INSERT INTO account_type (code, name, active) VALUES ('A', 'a', TRUE);
+            --rollback DELETE FROM account_type WHERE code = 'A';
+        """.trimIndent()
+        assertTrue(validate(sql).any { it.message.contains("never executes it") })
+    }
+
+    @Test
+    fun `explicit commit warning is configurable and silent outside changesets`() {
+        val sql = """
+            --liquibase formatted sql
+            --changeset team:1
+            DELETE FROM account_type WHERE code = 'A';
+            COMMIT;
+            --rollback DELETE FROM account_type WHERE code = 'A';
+        """.trimIndent()
+        assertTrue(validate(sql).any { it.message.contains("explicit COMMIT") })
+        val off = validate(sql, ValidationOptions(warnExplicitCommit = false))
+        assertTrue(off.none { it.message.contains("explicit COMMIT") })
+        // a plain (non-changeset) SQL file may commit as it pleases
+        val outside = validate("DELETE FROM account_type WHERE code = 'A';\nCOMMIT;")
+        assertTrue(outside.none { it.message.contains("explicit COMMIT") })
+    }
+
+    @Test
     fun `delimiter and syntax checks stay on even with every configurable rule off`() {
         val strictOnly = ValidationOptions(
             validateVarcharLength = false, validateNumericRanges = false,

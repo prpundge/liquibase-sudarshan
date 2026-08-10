@@ -46,6 +46,8 @@ data class ValidationOptions(
     /** Map `tmp_x`/`temp_x`/`stg_x` staging tables to table `x` when no MERGE provides a mapping. */
     val tempTableNameHeuristic: Boolean = true,
     val validateLiquibaseStructure: Boolean = true,
+    /** Liquibase manages the transaction — explicit COMMIT/ROLLBACK in a changeset warns. */
+    val warnExplicitCommit: Boolean = true,
     /** Oracle semantics: an empty string literal '' is NULL and violates NOT NULL columns. */
     val treatEmptyStringAsNull: Boolean = false,
 )

@@ -120,6 +120,11 @@ class SqlParser private constructor(private val text: String) {
             "DROP" -> peek(1).isKeyword("TABLE", "SEQUENCE", "INDEX", "VIEW")
             "TRUNCATE" -> peek(1).isKeyword("TABLE")
             "UPDATE" -> isNameToken(peek(1)) && peek(2).isKeyword("SET")
+            // `DELETE … (…) COMMIT;` without a ';' fails with ORA-00933 in real execution.
+            // Guarded by the follower so `ON COMMIT DELETE ROWS` tails never match.
+            "COMMIT", "ROLLBACK" ->
+                peek(1).type == SqlTokenType.SEMICOLON || peek(1).type == SqlTokenType.EOF ||
+                    peek(1).isKeyword("WORK")
             else -> false
         }
     }
