@@ -70,7 +70,7 @@ class ValidationEngine(private val options: ValidationOptions = ValidationOption
                 note.range,
             )
         }
-        validateDelimiters(sink, liquibase, script)
+        validateDelimiters(sink, liquibase, script, fileText)
 
         if (options.validateLiquibaseStructure) {
             for (problem in liquibase.problems) {
@@ -348,11 +348,56 @@ class ValidationEngine(private val options: ValidationOptions = ValidationOption
      * sending statements to the database. Mismatched attributes ship multi-statement
      * batches that most JDBC drivers reject.
      */
-    private fun validateDelimiters(sink: ProblemSink, liquibase: LiquibaseFile, script: SqlScript) {
+    private fun validateDelimiters(
+        sink: ProblemSink,
+        liquibase: LiquibaseFile,
+        script: SqlScript,
+        fileText: String,
+    ) {
         for (changeset in liquibase.changesets) {
             val statements = script.statements.filter {
                 it.range.start >= changeset.bodyRange.start && it.range.start < changeset.bodyRange.end
             }
+
+            // A DECLARED delimiter must actually appear in the body: Liquibase splits ONLY
+            // on it, so 'endDelimiter:/' without any '/' sends everything as one statement.
+            val endDelimiter = changeset.attributes["enddelimiter"]
+            if (!endDelimiter.isNullOrBlank() && endDelimiter != ";") {
+                val body = fileText.substring(
+                    changeset.bodyRange.start.coerceIn(0, fileText.length),
+                    changeset.bodyRange.end.coerceIn(0, fileText.length),
+                )
+                val present = body.lineSequence().any { line ->
+                    val trimmed = line.trim()
+                    trimmed == endDelimiter || trimmed.endsWith(" $endDelimiter")
+                }
+                if (!present && statements.size > 1) {
+                    sink.add(
+                        Severity.ERROR, ProblemCategory.SYNTAX,
+                        "Liquibase: changeset '${changeset.key}' declares endDelimiter:'$endDelimiter' " +
+                            "but '$endDelimiter' never appears in the body — Liquibase cannot split the " +
+                            "${statements.size} statements, sends them as ONE, and the release FAILS",
+                        changeset.headerRange,
+                    )
+                } else if (!present) {
+                    sink.add(
+                        Severity.WARNING, ProblemCategory.SYNTAX,
+                        "Liquibase: changeset '${changeset.key}' declares endDelimiter:'$endDelimiter' " +
+                            "but no '$endDelimiter' terminator is present — terminate the body with " +
+                            "'$endDelimiter'",
+                        changeset.headerRange,
+                    )
+                } else if (statements.size > 1) {
+                    sink.add(
+                        Severity.WEAK_WARNING, ProblemCategory.SYNTAX,
+                        "Liquibase: changeset '${changeset.key}' sets endDelimiter:'$endDelimiter' but its body " +
+                            "contains ${statements.size} ';'-terminated statements — Liquibase will NOT split " +
+                            "on ';' (intended only for PL/SQL blocks and similar)",
+                        changeset.headerRange,
+                    )
+                }
+            }
+
             if (statements.size <= 1) continue
 
             if (changeset.attributes["splitstatements"].equals("false", ignoreCase = true)) {
@@ -361,17 +406,6 @@ class ValidationEngine(private val options: ValidationOptions = ValidationOption
                     "Liquibase: changeset '${changeset.key}' has splitStatements:false but contains " +
                         "${statements.size} statements — the whole body is sent as ONE statement and " +
                         "most databases will reject it",
-                    changeset.headerRange,
-                )
-            }
-
-            val endDelimiter = changeset.attributes["enddelimiter"]
-            if (!endDelimiter.isNullOrBlank() && endDelimiter != ";") {
-                sink.add(
-                    Severity.WEAK_WARNING, ProblemCategory.SYNTAX,
-                    "Liquibase: changeset '${changeset.key}' sets endDelimiter:'$endDelimiter' but its body " +
-                        "contains ${statements.size} ';'-terminated statements — Liquibase will NOT split " +
-                        "on ';' (intended only for PL/SQL blocks and similar)",
                     changeset.headerRange,
                 )
             }

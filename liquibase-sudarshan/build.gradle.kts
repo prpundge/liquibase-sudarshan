@@ -10,7 +10,7 @@ plugins {
 }
 
 group = "com.company.liquibasevalidator"
-version = "0.3.2"
+version = "0.3.3"
 
 repositories {
     mavenCentral()
@@ -93,6 +93,11 @@ intellijPlatform {
         name = "Liquibase Sudarshan - SQL & Data Validator"
         version = project.version.toString()
         changeNotes = """
+            <b>0.3.3</b> — A declared <code>endDelimiter</code> is now verified against the
+            body: if the delimiter (e.g. '/') never appears, Liquibase cannot split the
+            statements — ERROR for multi-statement bodies (they are sent as one and the
+            release fails), warning for single-statement bodies ("terminate with '/'").
+            Strict rule, applies in the editor, CI/Jenkins gate and Bitbucket PR review.<br/>
             <b>0.3.2</b> — Four new rules from the Liquibase formatted-SQL practice guides:
             a PL/SQL object (package/procedure/function/trigger/type) without
             <code>endDelimiter</code> is a strict ERROR (Liquibase splits the block on every

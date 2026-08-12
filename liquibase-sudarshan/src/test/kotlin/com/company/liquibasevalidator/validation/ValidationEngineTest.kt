@@ -575,12 +575,39 @@ class ValidationEngineTest {
     }
 
     @Test
-    fun `custom endDelimiter with semicolon-terminated statements is a weak warning`() {
+    fun `declared endDelimiter that never appears in a multi-statement body is an error`() {
         val sql = """
             --liquibase formatted sql
             --changeset team:1 endDelimiter:/
             INSERT INTO account_type (code, name, active) VALUES ('A', 'a', TRUE);
             INSERT INTO account_type (code, name, active) VALUES ('B', 'b', TRUE);
+        """.trimIndent()
+        val problem = validate(sql).single { it.category == ProblemCategory.SYNTAX }
+        assertEquals(Severity.ERROR, problem.severity)
+        assertTrue(problem.message.contains("'/' never appears"))
+        assertTrue(problem.message.contains("release FAILS"))
+    }
+
+    @Test
+    fun `declared endDelimiter missing from a single-statement body is a warning`() {
+        val sql = """
+            --liquibase formatted sql
+            --changeset team:1 endDelimiter:/
+            INSERT INTO account_type (code, name, active) VALUES ('A', 'a', TRUE);
+        """.trimIndent()
+        val problem = validate(sql).single { it.category == ProblemCategory.SYNTAX }
+        assertEquals(Severity.WARNING, problem.severity)
+        assertTrue(problem.message.contains("terminate the body with '/'"))
+    }
+
+    @Test
+    fun `present endDelimiter with semicolon-terminated statements is a weak warning`() {
+        val sql = """
+            --liquibase formatted sql
+            --changeset team:1 endDelimiter:/
+            INSERT INTO account_type (code, name, active) VALUES ('A', 'a', TRUE);
+            INSERT INTO account_type (code, name, active) VALUES ('B', 'b', TRUE);
+            /
         """.trimIndent()
         val warning = validate(sql).single { it.category == ProblemCategory.SYNTAX }
         assertEquals(Severity.WEAK_WARNING, warning.severity)
