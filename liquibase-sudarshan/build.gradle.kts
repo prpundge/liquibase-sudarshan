@@ -10,7 +10,7 @@ plugins {
 }
 
 group = "com.company.liquibasevalidator"
-version = "0.3.3"
+version = "0.4.2"
 
 repositories {
     mavenCentral()
@@ -43,6 +43,8 @@ dependencies {
     // classpath-resolution path of JdbcDrivers.ensureDriver is exercised in tests
     testImplementation("org.postgresql:postgresql:42.7.4")
     testImplementation("junit:junit:4.13.2")
+    // in-memory database so JdbcSession's real SQL execution paths are covered without a server
+    testImplementation("com.h2database:h2:2.2.224")
     testImplementation("org.opentest4j:opentest4j:1.3.0")
     testRuntimeOnly("org.junit.vintage:junit-vintage-engine:5.10.2")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
@@ -72,7 +74,6 @@ kover {
                     "com.company.liquibasevalidator.database.JdbcConnector*",
                     "com.company.liquibasevalidator.database.JdbcSession*",
                     "com.company.liquibasevalidator.database.JdbcDrivers*",
-                    "com.company.liquibasevalidator.bitbucket.BitbucketClient*",
                 )
             }
         }
@@ -93,6 +94,44 @@ intellijPlatform {
         name = "Liquibase Sudarshan - SQL & Data Validator"
         version = project.version.toString()
         changeNotes = """
+            <b>0.4.2</b> — <b>Memory fixes.</b> Three things kept memory for the whole IDE
+            session and no longer do. (1) The per-file cache stored each file's complete parsed
+            syntax tree alongside its findings, although only the findings are ever read — up to
+            128 full ASTs per project; it now keeps findings only. (2) The tool window's report
+            listener was never deregistered, so every recreated tool window left a dead Swing
+            panel — and the report's file references — reachable; listeners are now tied to the
+            content's lifetime. (3) JDBC drivers self-register with <code>java.sql.DriverManager</code>,
+            a JDK-global static that pinned the driver's class loader and, through it, the whole
+            plugin class loader — so each plugin update stranded the previous copy of the plugin
+            plus the ~7 MB Oracle driver permanently. The plugin never uses DriverManager, so the
+            registration is now undone immediately and driver class loaders are closed on
+            unload.<br/>
+            <b>0.4.1</b> — <b>Unsaved edits are now validated.</b> The repository report, the
+            database dry run and the pre-commit check read the file from disk, so a file edited
+            but not yet saved was validated in its PREVIOUS state and reported "0 errors" while
+            the editor already underlined the problem. All three now read the editor's buffer,
+            like the inspection always did. Also: a keyword broken by a stray space
+            (<code>INS ERT INTO …</code>) is reported as exactly one error naming the whole
+            span — "'INSERT' is split by a space" — with a one-click fix, instead of the
+            generic unknown-keyword message.<br/>
+            <b>0.4.0</b> — Supported IDE floor drops from 2022.3 to <b>2021.2</b>: the plugin
+            now ships Java 11 bytecode (2021.2–2022.1 run JetBrains Runtime 11 and cannot
+            load Java 17 class files) and avoids the two APIs that blocked it —
+            <code>ActionUpdateThread</code> (2022.2+) and
+            <code>ContentFactory.getInstance()</code> (2022.3+). Every feature works on every
+            supported version; only the optional integrations vary, and those depend on
+            which plugins the IDE has (VCS for pre-commit, Git for pre-push, the database
+            plugin for SQL-language gutter markers), not on its version. Verified with the
+            JetBrains Plugin Verifier against ten builds: 2021.2, 2021.3, 2022.1, 2022.2,
+            2022.3, 2023.1, 2023.2, 2023.3, 2024.2 and 2025.1. 2021.1 is not supported — it
+            bundles Kotlin stdlib 1.4, which lacks <code>lowercase()</code>,
+            <code>Char.code</code> and the <code>kotlin.io.path</code> API.<br/>
+            <b>0.3.4</b> — <i>Release Dry Run…</i> (country + SIT/UAT/PROD picker) is removed.
+            The dry run against the configured datasource stays: right-click a file or folder
+            and choose <i>Dry Run Against Database</i>, or let it run automatically inside
+            <i>Validate Liquibase Repository</i> and the pre-commit/pre-push checks — same
+            read-only execution plan, data preview and live precondition checks, no
+            environment to pick.<br/>
             <b>0.3.3</b> — A declared <code>endDelimiter</code> is now verified against the
             body: if the delimiter (e.g. '/') never appears, Liquibase cannot split the
             statements — ERROR for multi-statement bodies (they are sent as one and the
@@ -197,9 +236,6 @@ intellijPlatform {
                     validation report with navigation</li>
                 <li>Optional <i>read-only</i> database dry run: pending changesets, live precondition
                     checks, foreign keys, INSERT/UPDATE data preview (PostgreSQL and Oracle)</li>
-                <li>Release dry run window: per-column comparison of the data the branch would write
-                    vs the data in a live server — INSERT / UPDATE with diffs / SAME / CONFLICT;
-                    changesets already released are shown as SKIP (DATABASECHANGELOG-aware)</li>
                 <li>Bitbucket pull-request review (Cloud and Server/Data Center): validate only the
                     PR's changed lines and optionally post inline review comments</li>
             </ul>
@@ -219,24 +255,34 @@ intellijPlatform {
             </ul>
         """.trimIndent()
         ideaVersion {
-            // Floor: 2022.3 (build 223), Community and Ultimate. This is the hard floor
-            // for a single artifact: 2022.2 was the first release running on JBR 17
-            // (2020.x-2022.1 run Java 11 and cannot load JVM-17 bytecode at all), and
-            // ActionUpdateThread arrived in 2022.3. Kotlin API is pinned to 1.7 — what
-            // 2022.3 bundles. Pre-232 the PrePushHandler signature differs — both
-            // signatures are implemented (see PrePushValidationHandler).
+            // Floor: 2021.2 (build 212), Community and Ultimate. Everything below is a
+            // hard stop, not a preference:
+            //   2021.1 (211) bundles Kotlin stdlib 1.4 — lowercase()/uppercase(), Char.code
+            //     and the whole kotlin.io.path API are 1.5, so ~200 call sites would have
+            //     to be rewritten to reach it. 212 bundles 1.5; apiVersion is pinned there.
+            //   Bytecode is Java 11 (2021.2-2022.1 run JBR 11; 2022.2+ run JBR 17 and load
+            //     11 bytecode fine), so one artifact covers every supported IDE.
+            //   ActionUpdateThread (2022.2) and ContentFactory.getInstance() (2022.3) are
+            //     therefore NOT used — see ValidateActions and LiquibaseReportToolWindow.
+            //   PrePushHandler's signature changed in 232 — both overloads are implemented.
             // No ceiling: only long-stable platform APIs are used, so the plugin stays
             // compatible with every future IDE build.
-            sinceBuild = "223"
+            sinceBuild = "212"
             untilBuild = provider { null }
         }
     }
 
     pluginVerification {
         ides {
-            // Pinned versions with downloadable ZIP artifacts: the floor, the previous
-            // floor, the compile target, and a recent line.
-            ides(listOf("IC-2022.3.3", "IC-2023.2.7", "IC-2024.2.4", "IC-2025.1.3"))
+            // Pinned versions with downloadable ZIP artifacts: the floor, EVERY 2023 line
+            // (the versions users actually report on), the compile target, and a recent line.
+            ides(
+                listOf(
+                    "IC-2021.2.4", "IC-2021.3.3", "IC-2022.1.4", "IC-2022.2.5", "IC-2022.3.3",
+                    "IC-2023.1.5", "IC-2023.2.7", "IC-2023.3.8",
+                    "IC-2024.2.4", "IC-2025.1.3",
+                ),
+            )
         }
     }
 
@@ -264,18 +310,24 @@ java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(21)
     }
-    // Bytecode floor 17 so IDEs from 2022.2 (first JBR 17 release) up to current can
-    // load the plugin. Older IDEs (2020.x-2022.1) run Java 11 and cannot.
-    sourceCompatibility = JavaVersion.VERSION_17
-    targetCompatibility = JavaVersion.VERSION_17
+    // Bytecode floor 11: 2021.1-2022.1 run on JetBrains Runtime 11 and cannot load
+    // Java 17 class files. 17-era IDEs load 11 bytecode fine, so one artifact covers all.
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
 }
 
 kotlin {
     compilerOptions {
-        jvmTarget = JvmTarget.JVM_17
-        // 2022.3 (the sinceBuild floor) bundles Kotlin 1.7 — restrict stdlib API usage
-        // accordingly so no call resolves to a function newer IDEs have but 223 lacks.
-        apiVersion = org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_1_7
+        jvmTarget = JvmTarget.JVM_11
+        // jvmTarget alone only sets the BYTECODE version — the compiler still resolves
+        // against the JDK 21 toolchain, so a Java 12+ method (e.g. Stream.toList(), 16)
+        // compiles happily and then dies with NoSuchMethodError on the JBR 11 that
+        // 2021.2-2022.1 run. -Xjdk-release is Kotlin's equivalent of javac --release:
+        // it limits the visible JDK API to 11. Do not remove.
+        freeCompilerArgs.add("-Xjdk-release=11")
+        // 2021.1 (the sinceBuild floor) bundles Kotlin stdlib 1.4 — restrict stdlib API
+        // usage accordingly so no call resolves to a function newer IDEs have but 211 lacks.
+        apiVersion = org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_1_5
         languageVersion = org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_1_9
     }
 }

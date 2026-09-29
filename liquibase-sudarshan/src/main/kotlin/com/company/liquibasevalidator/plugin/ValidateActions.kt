@@ -11,7 +11,6 @@ import com.company.liquibasevalidator.validation.Severity
 import com.company.liquibasevalidator.validation.ValidationEngine
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
-import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
@@ -51,7 +50,8 @@ internal object ValidationRunner {
                     indicator.fraction = index.toDouble() / files.size
                     indicator.text2 = file.name
                     try {
-                        val text = ReadAction.compute<String, RuntimeException> { VfsUtilCore.loadText(file) }
+                        // unsaved editor edits included — see currentTextOf
+                        val text = ReadAction.compute<String, RuntimeException> { currentTextOf(file) }
                         val displayPath = RepositoryScanner.displayPath(project, file)
                         fileData[file.path] = FileData(file, displayPath, text)
                         val result = engine.validate(text, schema)
@@ -180,8 +180,6 @@ internal object ValidationRunner {
 /** Right-click a file: "Validate Liquibase SQL" (directories validate recursively). */
 class ValidateLiquibaseFileAction : AnAction() {
 
-    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
-
     override fun update(e: AnActionEvent) {
         val file = e.getData(CommonDataKeys.VIRTUAL_FILE)
         e.presentation.isEnabledAndVisible = e.project != null && file != null &&
@@ -202,8 +200,6 @@ class ValidateLiquibaseFileAction : AnAction() {
  * the SQL Developer-style what-would-happen view, without executing anything.
  */
 class DryRunFileAction : AnAction() {
-
-    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
     override fun update(e: AnActionEvent) {
         val file = e.getData(CommonDataKeys.VIRTUAL_FILE)
@@ -233,8 +229,6 @@ class DryRunFileAction : AnAction() {
 
 /** Validates the whole configured repository (global DDL + datasets + country datasets). */
 class ValidateLiquibaseRepositoryAction : AnAction() {
-
-    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
     override fun update(e: AnActionEvent) {
         e.presentation.isEnabledAndVisible = e.project != null

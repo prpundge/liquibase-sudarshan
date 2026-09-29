@@ -7,7 +7,6 @@ import com.company.liquibasevalidator.release.ReleaseSimulator
 import com.company.liquibasevalidator.settings.LiquibaseSettings
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
-import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.application.ApplicationManager
@@ -28,8 +27,6 @@ import javax.swing.JComponent
  * checks, environment policies) and show the manifest + findings in the tool window.
  */
 class SimulateReleaseAction : AnAction() {
-
-    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
     override fun update(e: AnActionEvent) {
         e.presentation.isEnabledAndVisible = e.project?.basePath != null

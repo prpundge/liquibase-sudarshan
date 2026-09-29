@@ -10,6 +10,7 @@ build/
 bin/
 .gradle/
 .intellijPlatform/
+.kotlin/
 
 # Secrets / local
 *.local.json

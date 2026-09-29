@@ -226,20 +226,6 @@ environment pickers, manifest and findings in the tool window). `--db-url` compo
 seed the simulation with the live schema, read-only as always; `--github`, `--patch` and
 `--fail-on-warnings` compose too.
 
-### Release dry run — compare the branch against a live server
-
-**Tools | Liquibase Sudarshan | Release Dry Run…** picks a country, an environment and a
-server (JDBC URL/user prefilled from settings, editable per run — point it at the SIT,
-UAT or PROD replica you are about to release to) and shows, without executing anything:
-
-- **Execution plan** — every changeset in release order: RUN, or **SKIP when it is
-  already in that server's DATABASECHANGELOG** from a previous release (Liquibase will
-  not execute it again), HALT on a failing precondition, BLOCKED after a HALT.
-- **Data comparison** — per column, the value the branch would write next to the value
-  currently in the database: **INSERT** (new row), **UPDATE** (with the exact changed
-  columns), **SAME**, **CONFLICT** (direct INSERT onto an existing key — the release
-  would fail), **SKIP** (already released). Strictly read-only, SELECTs only.
-
 ### Bitbucket pull-request review
 
 Paste a PR link — `bitbucket.org/...` or a Bitbucket Server/Data Center
@@ -271,13 +257,43 @@ Requirements: JDK 21 (Gradle toolchain), internet access for the first build.
 3. Choose `build/distributions/liquibase-sudarshan-0.0.1.zip`, restart the IDE.
 4. Open your database repository, configure **Settings | Tools | Liquibase Sudarshan**.
 
-**IDE compatibility:** IntelliJ IDEA (Community or Ultimate) **2022.3 and every newer
-version** — the plugin declares no upper build bound, uses only long-stable platform APIs
-and ships JVM 17 bytecode, so new IDE releases (2024.x, 2025.x, 2026.x, …) install it
-without an update. Compatibility is checked with the JetBrains Plugin Verifier
-(`./gradlew verifyPlugin`) against 2022.3, 2023.2, 2024.2 and 2025.1. Older IDEs
-(2020.x–2022.1) run on Java 11 and cannot load JVM-17 plugin bytecode — 2022.2 was the
-first JetBrains Runtime 17 release, so 2022.3 is the practical floor.
+## IDE compatibility
+
+IntelliJ IDEA (Community or Ultimate) **2021.2 and every newer version**. The plugin
+declares no upper build bound, ships **Java 11 bytecode** and uses only APIs present in
+2021.2, so both old and new IDE releases (2024.x, 2025.x, 2026.x, …) run it unchanged.
+Verified with the JetBrains Plugin Verifier (`./gradlew verifyPlugin`) against **ten**
+builds: 2021.2, 2021.3, 2022.1, 2022.2, 2022.3, 2023.1, 2023.2, 2023.3, 2024.2 and 2025.1.
+
+**Why 2021.2 and not earlier:** 2021.1 bundles Kotlin stdlib **1.4**, which has no
+`lowercase()`/`uppercase()`, no `Char.code` and none of the `kotlin.io.path` API — all
+Kotlin 1.5. Supporting it means rewriting those call sites across the whole codebase, so
+2021.2 (stdlib 1.5) is the floor. Bytecode is Java 11 because 2021.2–2022.1 run on
+JetBrains Runtime 11; 2022.2+ run JBR 17 and load Java 11 class files without issue.
+
+### Which features you get on which IDE
+
+Every core feature — editor inspection with quick fixes, repository validation, release
+simulation, the read-only database dry run, the datasource tool window, the Bitbucket PR
+review and the CLI — works on **all supported versions, 2021.2 upward**. What varies is
+driven by which *plugins* the IDE has, not by its version:
+
+| Feature | Requirement | Community | Ultimate |
+|---|---|---|---|
+| Editor inspection, quick fixes, gutter markers on `.sql` (TEXT) | none | ✅ 2021.2+ | ✅ 2021.2+ |
+| Repository validation report, tool window, datasource browser | none | ✅ 2021.2+ | ✅ 2021.2+ |
+| Database dry run (PostgreSQL + Oracle), Simulate Release…, Bitbucket PR review | none | ✅ 2021.2+ | ✅ 2021.2+ |
+| Pre-commit validation | IDE has VCS support | ✅ 2021.2+ | ✅ 2021.2+ |
+| Pre-push validation | Git plugin enabled | ✅ 2021.2+ | ✅ 2021.2+ |
+| Gutter markers inside **SQL-language** files | `com.intellij.database` | — | ✅ 2021.2+ |
+
+The last three are optional `<depends>` entries: when the dependency is absent the plugin
+still loads and everything else keeps working — the feature is simply not registered.
+
+Two platform APIs are deliberately avoided to hold the 2021.2 floor: `ActionUpdateThread`
+(2022.2+) and `ContentFactory.getInstance()` (2022.3+). On 2022.2+ IDEs the actions
+therefore compute their enabled state on the EDT — each `update()` only does a null check
+and a file-extension test, so there is no measurable cost.
 
 ## Publishing to JetBrains Marketplace
 

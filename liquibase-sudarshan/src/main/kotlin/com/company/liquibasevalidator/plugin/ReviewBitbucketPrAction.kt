@@ -15,7 +15,6 @@ import com.company.liquibasevalidator.validation.Severity
 import com.company.liquibasevalidator.validation.ValidationEngine
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
-import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.application.ApplicationManager
@@ -46,8 +45,6 @@ import javax.swing.JTextField
  * database and how many rows it holds. Optionally posts everything to the PR.
  */
 class ReviewBitbucketPrAction : AnAction() {
-
-    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
     override fun update(e: AnActionEvent) {
         e.presentation.isEnabledAndVisible = e.project != null

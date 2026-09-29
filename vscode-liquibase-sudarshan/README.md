@@ -11,7 +11,7 @@ Compatible with VS Code **1.60 and every newer version** (uses only long-stable 
 
 ## Setup (2 minutes)
 
-1. Build the CLI jar once (needs JDK 17+):
+1. Build the CLI jar once (building needs JDK 21; the jar itself runs on **Java 11+**):
    ```bash
    cd liquibase-sudarshan && ./gradlew cliJar
    # -> build/libs/liquibase-sudarshan-cli-<version>.jar

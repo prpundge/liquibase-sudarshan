@@ -63,7 +63,9 @@ class JdbcConnector(private val config: DatabaseConfig) : DatabaseConnector {
     }
 }
 
-private class JdbcSession(
+// internal (not private) so tests can drive it against an in-memory database directly,
+// without going through JdbcConnector's driver resolution
+internal class JdbcSession(
     private val connection: Connection,
     private val config: DatabaseConfig,
     private val oracle: Boolean,

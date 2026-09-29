@@ -112,7 +112,10 @@ class SchemaIndexService(private val project: Project) : Disposable {
                     // fileId = VFS URL so navigation (Ctrl+Click, hover docs) can resolve it
                     val sources = ProjectPaths.sqlFilesUnder(ddlDir).mapNotNull { file ->
                         try {
-                            DdlSchemaBuilder.DdlSource(file.url, VfsUtilCore.loadText(file))
+                            DdlSchemaBuilder.DdlSource(
+                                file.url,
+                                com.company.liquibasevalidator.plugin.currentTextOf(file),
+                            )
                         } catch (e: Exception) {
                             log.warn("Cannot read DDL file ${file.path}", e)
                             null
@@ -220,8 +223,10 @@ class SchemaIndexService(private val project: Project) : Disposable {
     }
 
     override fun dispose() {
+        // every cached map goes, not just the two big ones: the project is closing and these
+        // are reachable from the service until it is collected
         snapshot = null
-        databaseTables = null
+        clearDatabaseOverlay()
     }
 
     companion object {

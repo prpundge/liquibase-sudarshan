@@ -98,7 +98,7 @@ class ValidationEngine(private val options: ValidationOptions = ValidationOption
         }
         validateChangesetPractices(sink, liquibase, script, fileText)
 
-        validateStatementKeywords(sink, script)
+        validateStatementKeywords(sink, script, fileText)
         DdlValidator(options, sink).validate(fileText, script, schema)
 
         val tempTables: Map<String, CreateTableStatement> = script.statementsOf<CreateTableStatement>()
@@ -318,11 +318,30 @@ class ValidationEngine(private val options: ValidationOptions = ValidationOption
      * database would reject it — and the whole statement would otherwise silently skip
      * validation. Recognized-but-unparsed statements (GRANT, DROP, PL/SQL, …) stay silent.
      */
-    private fun validateStatementKeywords(sink: ProblemSink, script: SqlScript) {
+    private fun validateStatementKeywords(sink: ProblemSink, script: SqlScript, fileText: String) {
         for (statement in script.statementsOf<UnknownStatement>()) {
             val word = statement.leadingWord
             if (word.isEmpty() || !word.first().isLetter()) continue // '/' terminators etc.
             if (word.uppercase() in KNOWN_STATEMENT_WORDS) continue
+
+            // A keyword broken by a stray space ("INS ERT INTO …") is the common shape:
+            // report the whole span and offer to rejoin it, instead of just the first word.
+            val start = statement.leadingRange.start
+            val tail = fileText.substring(start, minOf(statement.range.end, fileText.length))
+            val twoWords = SPLIT_KEYWORD.find(tail)
+            val rejoined = twoWords?.let { (it.groupValues[1] + it.groupValues[2]).uppercase() }
+            if (rejoined != null && rejoined in KNOWN_STATEMENT_WORDS) {
+                val span = SrcRange(start, start + twoWords.value.length)
+                sink.add(
+                    Severity.ERROR, ProblemCategory.SYNTAX,
+                    "Liquibase: '${twoWords.value}' is not a statement — '$rejoined' is split by a " +
+                        "space, so the database receives invalid SQL and the release FAILS here",
+                    span,
+                    listOf(QuickFixData.ReplaceText(span, rejoined, "Change to '$rejoined'")),
+                )
+                continue
+            }
+
             val suggestion = nearestStatementKeyword(word)
             val fixes = suggestion?.let {
                 listOf(QuickFixData.ReplaceText(statement.leadingRange, it, "Change '$word' to $it"))
@@ -445,6 +464,9 @@ class ValidationEngine(private val options: ValidationOptions = ValidationOption
 }
 
 /** Statement starters any target database (or Liquibase itself) understands. */
+/** First two words of a statement, e.g. `INS ERT` — used to spot a keyword split by a space. */
+private val SPLIT_KEYWORD = Regex("^([A-Za-z_][A-Za-z0-9_]*)\\s+([A-Za-z_][A-Za-z0-9_]*)")
+
 private val KNOWN_STATEMENT_WORDS = setOf(
     "SELECT", "WITH", "INSERT", "MERGE", "UPDATE", "DELETE", "CREATE", "ALTER", "DROP",
     "TRUNCATE", "GRANT", "REVOKE", "COMMENT", "SET", "BEGIN", "DECLARE", "END", "CALL",

@@ -46,9 +46,9 @@ class InspectionCoverageTest : BasePlatformTestCase() {
 
     private fun manager(): InspectionManager = InspectionManager.getInstance(project)
 
-    private fun sampleResult(): ValidationResult =
+    private fun sampleResult(): List<com.company.liquibasevalidator.validation.ValidationProblem> =
         ValidationEngine(ValidationOptions())
-            .validate("INSERT INTO t (a) VALUES (1);", MapSchemaProvider.UNRESOLVED)
+            .validate("INSERT INTO t (a) VALUES (1);", MapSchemaProvider.UNRESOLVED).problems
 
     /** Minimal [PsiFile] stub: only the members the inspection touches before its early exits. */
     private fun psiFileStub(name: String, text: String?, failOnProject: Boolean = false): PsiFile =
@@ -143,7 +143,7 @@ class InspectionCoverageTest : BasePlatformTestCase() {
         val cached = ValidationResultCache.getInstance(project)
             .get(myFixture.file.virtualFile.url, myFixture.file.modificationStamp, stamp)
         assertNotNull(cached)
-        assertEquals(first.size, cached!!.problems.size)
+        assertEquals(first.size, cached!!.size)
 
         // the second pass produces the same descriptors from the cached result
         val second = inspection.checkFile(myFixture.file, manager(), false)

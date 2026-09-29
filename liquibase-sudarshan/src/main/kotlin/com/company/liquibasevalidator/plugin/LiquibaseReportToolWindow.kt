@@ -13,6 +13,7 @@ import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
+import com.intellij.openapi.util.Disposer
 import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.treeStructure.Tree
 import java.awt.BorderLayout
@@ -38,12 +39,21 @@ class LiquibaseReportToolWindowFactory : ToolWindowFactory, DumbAware {
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         val reportPanel = ReportPanel(project)
         val datasourcePanel = DatasourcePanel(project)
-        val factory = ContentFactory.getInstance()
-        toolWindow.contentManager.addContent(factory.createContent(reportPanel, "Validation", false))
+        // ContentFactory.getInstance() is 2022.3+, ContentFactory.SERVICE was removed in
+        // 2024.x — the service lookup is the one spelling valid on every supported IDE.
+        val factory = ApplicationManager.getApplication().getService(ContentFactory::class.java)
+        val validationContent = factory.createContent(reportPanel, "Validation", false)
+        toolWindow.contentManager.addContent(validationContent)
         toolWindow.contentManager.addContent(factory.createContent(datasourcePanel, "Datasource", false))
 
+        // The listener below captures this panel and tool window, so its lifetime is tied to
+        // the content: when the tool window is recreated or the project closes, it is dropped
+        // instead of keeping a dead Swing tree (and its report's VirtualFiles) reachable.
+        val listenerLifetime = Disposer.newDisposable("Liquibase report listener")
+        validationContent.setDisposer(listenerLifetime)
+
         val service = ValidationReportService.getInstance(project)
-        service.addListener { report ->
+        service.addListener(listenerLifetime) { report ->
             // disposal-guarded: a validation finishing during project close must not touch
             // the disposed tool window
             ApplicationManager.getApplication().invokeLater(

@@ -1,7 +1,7 @@
 --liquibase formatted sql
 
---changeasset banking-team:IN-001a-drop-tmp context:IN runAlways:true failOnErasdror:false
---coasmment: GTT definitions persist; drop before EVERY run (runAlways) so the re-create below never hits ORA-00955
+--changeset banking-team:IN-001a-drop-tmp context:IN runAlways:true failOnError:false
+--comment: GTT definitions persist; drop before EVERY run (runAlways) so the re-create below never hits ORA-00955
 DROP TABLE tmp_account_type;
 --rollback SELECT 1 FROM dual;
 
@@ -15,7 +15,7 @@ CREATE GLOBAL TEMPORARY TABLE tmp_account_type (
     active_flag CHAR(1)            NOT NULL
 ) ON COMMIT DELETE ROWS;
 
-INSERT INTO tmp_account_type (code, name, description, active_flag)
+INS ERT INTO tmp_account_type (code, name, description, active_flag)
 VALUES ('12d', 'Public Provident Fund', 'India PPF account', 'Y');
 
 INSERT INTO tmp_account_type (code, name, description, active_flag)

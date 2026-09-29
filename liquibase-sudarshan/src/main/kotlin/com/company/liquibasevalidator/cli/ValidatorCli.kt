@@ -44,12 +44,22 @@ object ValidatorCli {
     @JvmStatic
     fun main(args: Array<String>) {
         // Findings contain non-ASCII punctuation; emit UTF-8 regardless of platform console.
+        // Console setup belongs to the process entry point, not to [execute].
         System.setOut(java.io.PrintStream(java.io.FileOutputStream(java.io.FileDescriptor.out), true, Charsets.UTF_8))
+        kotlin.system.exitProcess(execute(args))
+    }
+
+    /**
+     * The whole CLI, returning the exit code instead of terminating the JVM:
+     * 0 = clean, 1 = findings, 2 = usage or environment failure. [main] is the only
+     * place that actually exits, which keeps every path below runnable in-process.
+     */
+    fun execute(args: Array<String>): Int {
         val positional = args.filterNot { it.startsWith("--") }
         val root = Paths.get(positional.firstOrNull() ?: ".").toAbsolutePath().normalize()
         if (!root.isDirectory()) {
             System.err.println("error: repository root not found: $root")
-            kotlin.system.exitProcess(2)
+            return 2
         }
         val country = args.optionValue("--country")
         val failOnWarnings = args.contains("--fail-on-warnings")
@@ -59,7 +69,7 @@ object ValidatorCli {
         val bitbucketRef = args.optionValue("--bitbucket-pr")?.let { url ->
             com.company.liquibasevalidator.bitbucket.BitbucketPr.parse(url) ?: run {
                 System.err.println("error: not a recognizable Bitbucket pull-request URL: $url")
-                kotlin.system.exitProcess(2)
+                return 2
             }
         }
         val bitbucketToken = args.optionValue("--bitbucket-token")
@@ -74,7 +84,7 @@ object ValidatorCli {
             val file = Paths.get(patchPath).let { if (it.isAbsolute) it else root.resolve(it) }
             if (!file.isRegularFile()) {
                 System.err.println("error: patch file not found: $file")
-                kotlin.system.exitProcess(2)
+                return 2
             }
             val parsed = PatchFilter.parse(decodeTextAuto(Files.readAllBytes(file)))
             if (parsed.fileCount == 0) {
@@ -89,14 +99,14 @@ object ValidatorCli {
                 com.company.liquibasevalidator.bitbucket.BitbucketClient(bitbucketAuth).getText(ref.diffUrl)
             } catch (e: Exception) {
                 System.err.println("error: cannot fetch the PR diff from Bitbucket: ${e.message}")
-                kotlin.system.exitProcess(2)
+                return 2
             }
             if (!com.company.liquibasevalidator.bitbucket.BitbucketPr.looksLikeUnifiedDiff(diff)) {
                 System.err.println(
                     "error: Bitbucket did not return a unified diff for ${ref.display} — " +
                         "generate one locally and pass it with --patch=<file.diff>",
                 )
-                kotlin.system.exitProcess(2)
+                return 2
             }
             PatchFilter.parse(diff)
         }
@@ -107,8 +117,7 @@ object ValidatorCli {
 
         // Release simulation mode: validate the exact ordered (country, environment) run.
         if (args.contains("--simulate")) {
-            runSimulation(root, args, reporter, options, failOnWarnings)
-            return
+            return runSimulation(root, args, reporter, options, failOnWarnings)
         }
 
         val ddlDirs = args.optionValues("--ddl").map { root.resolve(it) }.ifEmpty { detectDdlDirs(root) }
@@ -116,7 +125,7 @@ object ValidatorCli {
 
         if (ddlDirs.isEmpty()) {
             System.err.println("error: no DDL directory found under $root (expected */global/ddl or --ddl=<dir>)")
-            kotlin.system.exitProcess(2)
+            return 2
         }
 
         val ddlFiles = ddlDirs.flatMap(::sqlFilesUnder)
@@ -193,7 +202,7 @@ object ValidatorCli {
                 }
             } catch (e: Exception) {
                 System.err.println("error: dry run failed: ${e.message ?: e.javaClass.simpleName}")
-                kotlin.system.exitProcess(2)
+                return 2
             }
         }
 
@@ -209,9 +218,11 @@ object ValidatorCli {
                 "${reporter.errors} error(s), ${reporter.warnings} warning(s)",
         )
         if (bitbucketRef != null) {
-            publishBitbucketReview(bitbucketRef, bitbucketAuth, reporter, post = args.contains("--bitbucket-post"))
+            val published =
+                publishBitbucketReview(bitbucketRef, bitbucketAuth, reporter, post = args.contains("--bitbucket-post"))
+            if (published != 0) return published
         }
-        if (reporter.errors > 0 || (failOnWarnings && reporter.warnings > 0)) kotlin.system.exitProcess(1)
+        return if (reporter.errors > 0 || (failOnWarnings && reporter.warnings > 0)) 1 else 0
     }
 
     // ---------------------------------------------------------------------------------------
@@ -225,7 +236,7 @@ object ValidatorCli {
         auth: String?,
         reporter: Reporter,
         post: Boolean,
-    ) {
+    ): Int {
         val bp = com.company.liquibasevalidator.bitbucket.BitbucketPr
         val summary = bp.summaryText(reporter.errors, reporter.warnings, reporter.patch?.fileCount ?: 0)
         println()
@@ -234,11 +245,11 @@ object ValidatorCli {
         if (!post) {
             reporter.collected.forEach { println("  ${it.path}:${it.line}: [${it.label}] ${it.message}") }
             println("  (preview only — add --bitbucket-post to publish this review to the PR)")
-            return
+            return 0
         }
         if (auth == null) {
             System.err.println("error: --bitbucket-post needs --bitbucket-token=<t> or the BITBUCKET_TOKEN env variable")
-            kotlin.system.exitProcess(2)
+            return 2
         }
         val client = com.company.liquibasevalidator.bitbucket.BitbucketClient(auth)
         try {
@@ -256,8 +267,9 @@ object ValidatorCli {
             println("  posted ${toPost.size} inline comment(s) + 1 summary to ${ref.display}")
         } catch (e: Exception) {
             System.err.println("error: posting the review failed: ${e.message}")
-            kotlin.system.exitProcess(2)
+            return 2
         }
+        return 0
     }
 
     // ---------------------------------------------------------------------------------------
@@ -270,12 +282,12 @@ object ValidatorCli {
         reporter: Reporter,
         options: com.company.liquibasevalidator.validation.ValidationOptions,
         failOnWarnings: Boolean,
-    ) {
+    ): Int {
         val country = args.optionValue("--country")
         val environment = args.optionValue("--env")
         if (country.isNullOrBlank() || environment.isNullOrBlank()) {
             System.err.println("error: --simulate requires --country=<CC> and --env=<SIT|UAT|PROD>")
-            kotlin.system.exitProcess(2)
+            return 2
         }
 
         val loaded = com.company.liquibasevalidator.release.ReleaseConfigLoader.load(root)
@@ -297,7 +309,7 @@ object ValidatorCli {
                 JdbcConnector(config).withSession { it.fetchTables() }
             } catch (e: Exception) {
                 System.err.println("error: cannot read live schema for simulation: ${e.message}")
-                kotlin.system.exitProcess(2)
+                return 2
             }
         } else {
             emptyMap()
@@ -334,7 +346,7 @@ object ValidatorCli {
                 "${reporter.errors} error(s), ${reporter.warnings} warning(s) — " +
                 (if (reporter.errors == 0) "release would EXECUTE" else "release would FAIL"),
         )
-        if (reporter.errors > 0 || (failOnWarnings && reporter.warnings > 0)) kotlin.system.exitProcess(1)
+        return if (reporter.errors > 0 || (failOnWarnings && reporter.warnings > 0)) 1 else 0
     }
 
     // ---------------------------------------------------------------------------------------

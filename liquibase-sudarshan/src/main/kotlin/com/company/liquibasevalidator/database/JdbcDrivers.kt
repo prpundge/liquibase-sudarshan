@@ -10,6 +10,8 @@ import java.nio.file.Paths
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.sql.Driver
+import java.sql.DriverManager
+import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -149,8 +151,46 @@ object JdbcDrivers {
         val key = "${spec.driverClass}|${jar.toAbsolutePath()}"
         return loadedDrivers.getOrPut(key) {
             val loader = URLClassLoader(arrayOf(jar.toUri().toURL()), JdbcDrivers::class.java.classLoader)
-            Class.forName(spec.driverClass, true, loader).getDeclaredConstructor().newInstance() as Driver
+            val driver =
+                Class.forName(spec.driverClass, true, loader).getDeclaredConstructor().newInstance() as Driver
+            detachFromDriverManager(loader)
+            driver
         }
+    }
+
+    /**
+     * Removes drivers loaded by [loader] from [DriverManager].
+     *
+     * A JDBC driver registers itself with `DriverManager` in its static initializer, and
+     * `DriverManager` is a **JDK-level static**. That registration keeps the driver's class
+     * loader alive forever, and through its parent the plugin's own class loader with every
+     * plugin class in it — so each plugin update or reload would strand the previous copy of
+     * the plugin plus the ~7 MB Oracle driver in memory, permanently.
+     *
+     * Nothing here ever uses `DriverManager` (connections come from [Driver.connect] on the
+     * instance we hold), so the registration is pure liability and is undone immediately.
+     */
+    private fun detachFromDriverManager(loader: ClassLoader) {
+        for (registered in Collections.list(DriverManager.getDrivers())) {
+            if (registered.javaClass.classLoader === loader) {
+                runCatching { DriverManager.deregisterDriver(registered) }
+            }
+        }
+    }
+
+    /**
+     * Releases every driver class loader this object opened. Called when the plugin is
+     * unloaded so its class loaders can be collected instead of lingering for the session.
+     */
+    fun releaseLoadedDrivers() {
+        for (driver in loadedDrivers.values) {
+            (driver.javaClass.classLoader as? URLClassLoader)?.let { loader ->
+                detachFromDriverManager(loader)
+                runCatching { loader.close() }
+            }
+        }
+        loadedDrivers.clear()
+        verifiedJars.clear()
     }
 
     private fun sha256Of(file: Path): String {

@@ -36,7 +36,12 @@ internal object CommitPushValidation {
             project,
             files.mapNotNull { file ->
                 try {
-                    SqlText(file.name, ReadAction.compute<String, RuntimeException> { VfsUtilCore.loadText(file) })
+                    SqlText(
+                        file.name,
+                        ReadAction.compute<String, RuntimeException> {
+                            com.company.liquibasevalidator.plugin.currentTextOf(file)
+                        },
+                    )
                 } catch (e: ProcessCanceledException) {
                     throw e
                 } catch (e: Exception) {

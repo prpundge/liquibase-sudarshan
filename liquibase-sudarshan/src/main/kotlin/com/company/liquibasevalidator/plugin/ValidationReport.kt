@@ -1,8 +1,10 @@
 package com.company.liquibasevalidator.plugin
 
 import com.company.liquibasevalidator.validation.Severity
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.VirtualFile
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -47,7 +49,7 @@ data class ValidationReport(
 
 /** Holds the latest report; the tool window subscribes for updates. */
 @Service(Service.Level.PROJECT)
-class ValidationReportService {
+class ValidationReportService : Disposable {
 
     @Volatile
     var report: ValidationReport? = null
@@ -60,8 +62,21 @@ class ValidationReportService {
         listeners.forEach { it(report) }
     }
 
-    fun addListener(listener: (ValidationReport) -> Unit) {
+    /**
+     * Registers [listener] for the lifetime of [parentDisposable]. The tool window's listener
+     * captures its whole Swing panel, so without deregistration every recreated tool window
+     * (project reopen, "Restore Default Layout", plugin reload) left a dead panel — and the
+     * report items holding VirtualFiles behind it — reachable for the rest of the session.
+     */
+    fun addListener(parentDisposable: Disposable, listener: (ValidationReport) -> Unit) {
         listeners += listener
+        Disposer.register(parentDisposable) { listeners -= listener }
+    }
+
+    /** Drops the retained report and every listener — the project is closing. */
+    override fun dispose() {
+        report = null
+        listeners.clear()
     }
 
     companion object {

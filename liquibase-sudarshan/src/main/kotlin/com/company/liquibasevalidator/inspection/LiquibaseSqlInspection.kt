@@ -42,12 +42,14 @@ class LiquibaseSqlInspection : LocalInspectionTool() {
             val fileUrl = file.virtualFile?.url ?: file.name
             val fileStamp = file.modificationStamp
             val stateStamp = index.validationStamp()
-            val result = cache.get(fileUrl, fileStamp, stateStamp)
+            // only the problems are cached — the parsed AST behind them is thrown away
+            val problems = cache.get(fileUrl, fileStamp, stateStamp)
                 ?: ValidationEngine(LiquibaseSettings.getInstance(project).toOptions())
                     .validate(text, index.schemaProvider())
+                    .problems
                     .also { cache.put(fileUrl, fileStamp, stateStamp, it) }
 
-            result.problems.mapNotNull { problem ->
+            problems.mapNotNull { problem ->
                 val range = clamp(problem.range.start, problem.range.end, text.length) ?: return@mapNotNull null
                 val fixes = problem.fixes.map(::toQuickFix).toTypedArray()
                 manager.createProblemDescriptor(

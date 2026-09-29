@@ -51,7 +51,7 @@
                 "liquibaseSudarshan.javaPath": {
                     "type": "string",
                     "default": "java",
-                    "description": "Java 17+ executable used to run the validator."
+                    "description": "Java 11+ executable used to run the validator."
                 },
                 "liquibaseSudarshan.repositoryPath": {
                     "type": "string",

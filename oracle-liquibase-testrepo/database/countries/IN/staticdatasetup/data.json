@@ -1,0 +1,14 @@
+{
+  "id": 101,
+  "name": "Jane Doe",
+  "is_active": true,
+  "roles": [
+    "Admin",
+    "User"
+  ],
+  "contact": {
+    "email": "jane.doe@example.com",
+    "phone": "+1-555-0198"
+  },
+  "metadata": null
+}
