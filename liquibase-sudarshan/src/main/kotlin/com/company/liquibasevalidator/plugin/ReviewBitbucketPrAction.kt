@@ -18,7 +18,6 @@ import com.intellij.notification.NotificationType
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
@@ -101,7 +100,7 @@ class ReviewBitbucketPrAction : AnAction() {
                     val input: LiquibaseDryRun.FileInput,
                 )
                 val analyzed = mutableListOf<Analyzed>()
-                val files = ReadAction.compute<List<Pair<VirtualFile, String>>, RuntimeException> {
+                val files = PlatformCompat.readAction<List<Pair<VirtualFile, String>>> {
                     RepositoryScanner.repositoryFiles(project).files
                         .filter { patch.touches(it.path) }
                         .map { it to String(it.contentsToByteArray(), it.charset) }

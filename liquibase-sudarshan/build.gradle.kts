@@ -10,7 +10,7 @@ plugins {
 }
 
 group = "com.company.liquibasevalidator"
-version = "0.4.2"
+version = "0.4.3"
 
 repositories {
     mavenCentral()
@@ -94,6 +94,12 @@ intellijPlatform {
         name = "Liquibase Sudarshan - SQL & Data Validator"
         version = project.version.toString()
         changeNotes = """
+            <b>0.4.3</b> — <b>No deprecated platform APIs on current IDEs.</b> The JetBrains
+            verifier reported 9 deprecated-API usages against IntelliJ IDEA 2026.3 EAP; it now
+            reports none on 2026.1, 2026.2 and 2026.3, while the 2021.2 floor is unchanged.
+            Read actions, credential-store keys, tree speed search and the settings-applied
+            highlighting restart now use APIs that exist, undeprecated, on every supported build.
+            No functional changes.<br/>
             <b>0.4.2</b> — <b>Memory fixes.</b> Three things kept memory for the whole IDE
             session and no longer do. (1) The per-file cache stored each file's complete parsed
             syntax tree alongside its findings, although only the findings are ever read — up to
@@ -276,11 +282,15 @@ intellijPlatform {
         ides {
             // Pinned versions with downloadable ZIP artifacts: the floor, EVERY 2023 line
             // (the versions users actually report on), the compile target, and a recent line.
+            // 2025.3+ ships only the unified IU distribution (no IC). -PverifyIdes=IU-2026.2.3,...
+            // verifies against just those builds instead of the whole list.
+            val only = providers.gradleProperty("verifyIdes").orNull
+                ?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }
             ides(
-                listOf(
+                only ?: listOf(
                     "IC-2021.2.4", "IC-2021.3.3", "IC-2022.1.4", "IC-2022.2.5", "IC-2022.3.3",
                     "IC-2023.1.5", "IC-2023.2.7", "IC-2023.3.8",
-                    "IC-2024.2.4", "IC-2025.1.3",
+                    "IC-2024.2.4", "IC-2025.1.3", "IU-2026.2.3",
                 ),
             )
         }

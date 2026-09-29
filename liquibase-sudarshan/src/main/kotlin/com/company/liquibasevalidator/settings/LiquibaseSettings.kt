@@ -1,5 +1,6 @@
 package com.company.liquibasevalidator.settings
 
+import com.company.liquibasevalidator.plugin.PlatformCompat
 import com.company.liquibasevalidator.validation.ValidationOptions
 import com.intellij.credentialStore.CredentialAttributes
 import com.intellij.credentialStore.Credentials
@@ -101,8 +102,10 @@ class LiquibaseSettings : PersistentStateComponent<LiquibaseSettings.State> {
  *  entered once in the Review Bitbucket PR dialog, reused on every later review. */
 object BitbucketTokenStore {
 
+    // via PlatformCompat (Java): from Kotlin this constructor call compiles to the
+    // default-arguments synthetic constructor, which is deprecated since 251
     private fun attributes(host: String): CredentialAttributes =
-        CredentialAttributes(serviceName = generateServiceName("LiquibaseSudarshan.Bitbucket", host))
+        PlatformCompat.credentialAttributes(generateServiceName("LiquibaseSudarshan.Bitbucket", host))
 
     /** user (empty for Server tokens) to token; nulls when nothing is stored yet. */
     fun load(host: String): Pair<String, String>? {
@@ -119,9 +122,10 @@ object BitbucketTokenStore {
 
 object DbPasswordStore {
 
-    // single-argument constructor: the two-argument form is deprecated in newer platforms
+    // single-argument constructor via PlatformCompat: the two-argument form and the Kotlin
+    // (default-arguments synthetic) constructor are both deprecated in newer platforms
     private fun attributes(url: String, user: String): CredentialAttributes =
-        CredentialAttributes(serviceName = generateServiceName("LiquibaseSudarshan", "$url|$user"))
+        PlatformCompat.credentialAttributes(generateServiceName("LiquibaseSudarshan", "$url|$user"))
 
     fun load(url: String, user: String): String =
         PasswordSafe.instance.getPassword(attributes(url, user)).orEmpty()

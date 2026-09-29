@@ -137,8 +137,8 @@ private class ReportPanel(private val project: Project) : JPanel(BorderLayout())
                 if (e.clickCount == 2) navigateSelected()
             }
         })
-        @Suppress("DEPRECATION") // installOn is not available on the 2023.2 floor
-        com.intellij.ui.TreeSpeedSearch(tree) // type-to-find within the findings tree
+        // not TreeSpeedSearch(tree): deprecated since 232, and installOn() is missing before 232
+        com.intellij.ui.TreeUIHelper.getInstance().installTreeSpeedSearch(tree) // type-to-find within the findings tree
         TreePopupSupport.install(tree, buildPopupMenu())
         add(summary, BorderLayout.NORTH)
         add(JBScrollPane(tree), BorderLayout.CENTER)

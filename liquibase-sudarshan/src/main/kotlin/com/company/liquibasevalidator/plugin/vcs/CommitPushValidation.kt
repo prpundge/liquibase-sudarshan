@@ -1,5 +1,6 @@
 package com.company.liquibasevalidator.plugin.vcs
 
+import com.company.liquibasevalidator.plugin.PlatformCompat
 import com.company.liquibasevalidator.database.DatabaseConfig
 import com.company.liquibasevalidator.database.JdbcConnector
 import com.company.liquibasevalidator.database.LiquibaseDryRun
@@ -8,7 +9,6 @@ import com.company.liquibasevalidator.settings.DbPasswordStore
 import com.company.liquibasevalidator.settings.LiquibaseSettings
 import com.company.liquibasevalidator.validation.Severity
 import com.company.liquibasevalidator.validation.ValidationEngine
-import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.ProgressIndicator
@@ -38,7 +38,7 @@ internal object CommitPushValidation {
                 try {
                     SqlText(
                         file.name,
-                        ReadAction.compute<String, RuntimeException> {
+                        PlatformCompat.readAction<String> {
                             com.company.liquibasevalidator.plugin.currentTextOf(file)
                         },
                     )

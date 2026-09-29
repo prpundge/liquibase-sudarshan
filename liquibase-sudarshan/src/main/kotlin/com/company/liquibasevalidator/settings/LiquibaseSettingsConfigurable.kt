@@ -291,7 +291,7 @@ class LiquibaseSettingsConfigurable(private val project: Project) : Configurable
 
         val index = SchemaIndexService.getInstance(project)
         if (settings.state.dbValidationEnabled) index.refreshDatabaseMetadata() else index.clearDatabaseOverlay()
-        DaemonCodeAnalyzer.getInstance(project).restart()
+        DaemonCodeAnalyzer.getInstance(project).settingsChanged() // restarts highlighting; restart() is deprecated in 262, restart(reason) is missing before it
     }
 
     override fun reset() {

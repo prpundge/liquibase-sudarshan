@@ -139,8 +139,8 @@ internal class DatasourcePanel(private val project: Project) : JPanel(BorderLayo
                 }
             }
         })
-        @Suppress("DEPRECATION") // installOn is not available on the 2023.2 floor
-        com.intellij.ui.TreeSpeedSearch(tree) // type-to-find tables/columns/sequences
+        // not TreeSpeedSearch(tree): deprecated since 232, and installOn() is missing before 232
+        com.intellij.ui.TreeUIHelper.getInstance().installTreeSpeedSearch(tree) // type-to-find tables/columns/sequences
         TreePopupSupport.install(
             tree,
             JPopupMenu().apply {

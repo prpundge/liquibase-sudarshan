@@ -1,12 +1,12 @@
 package com.company.liquibasevalidator.schema
 
+import com.company.liquibasevalidator.plugin.PlatformCompat
 import com.company.liquibasevalidator.database.DatabaseConfig
 import com.company.liquibasevalidator.database.JdbcConnector
 import com.company.liquibasevalidator.settings.DbPasswordStore
 import com.company.liquibasevalidator.settings.LiquibaseSettings
 import com.company.liquibasevalidator.settings.ProjectPaths
 import com.intellij.openapi.Disposable
-import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.progress.ProgressIndicator
@@ -103,7 +103,7 @@ class SchemaIndexService(private val project: Project) : Disposable {
     private fun build(key: Pair<Long, Long>): Snapshot {
         val settings = LiquibaseSettings.getInstance(project).state
         return try {
-            ReadAction.compute<Snapshot, RuntimeException> {
+            PlatformCompat.readAction<Snapshot> {
                 val ddlDir = ProjectPaths.resolveDirectory(project, settings.globalDdlPath)
                 ddlDirPath = ddlDir?.path
                 if (ddlDir == null) {

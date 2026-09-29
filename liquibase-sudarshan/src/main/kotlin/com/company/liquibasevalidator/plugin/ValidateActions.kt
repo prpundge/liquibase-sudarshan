@@ -15,7 +15,6 @@ import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.Task
@@ -51,7 +50,7 @@ internal object ValidationRunner {
                     indicator.text2 = file.name
                     try {
                         // unsaved editor edits included — see currentTextOf
-                        val text = ReadAction.compute<String, RuntimeException> { currentTextOf(file) }
+                        val text = PlatformCompat.readAction<String> { currentTextOf(file) }
                         val displayPath = RepositoryScanner.displayPath(project, file)
                         fileData[file.path] = FileData(file, displayPath, text)
                         val result = engine.validate(text, schema)
